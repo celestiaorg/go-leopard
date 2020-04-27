@@ -1,7 +1,8 @@
 package leopard
 
 import (
-	"reflect"
+	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,28 +44,44 @@ func TestEncodeWorkCount(t *testing.T) {
 }
 
 func TestEncode(t *testing.T) {
-	type args struct {
-		bufferBytes   uint64
-		originalData  [][]byte
-		originalCount uint
-		recoveryCount uint
+	originalCount := 10
+	recoveryCount := 1
+	bufferBytes := 640
+	originalData := make([][]byte, originalCount)
+	for i := 0; i < originalCount; i++ {
+		originalData[i] = make([]byte, bufferBytes)
+		rand.Read(originalData[i])
 	}
-	tests := []struct {
-		name    string
-		args    args
-		want    [][]byte
-		wantErr bool
-	}{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Encode(tt.args.bufferBytes, tt.args.originalData, tt.args.originalCount, tt.args.recoveryCount)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Encode() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				//t.Errorf("Encode() got = %v, want %v", got, tt.want)
-			}
-		})
+
+	assert.NoError(t, Init())
+
+	workCount := EncodeWorkCount(uint64(originalCount), uint64(recoveryCount))
+	var encodeWork = make([][]byte, workCount)
+	for i := uint(0); i < uint(workCount); i++ {
+		encodeWork[i] = make([]byte, bufferBytes)
+	}
+	var decodeWork = make([][]byte, workCount)
+	for i := uint(0); i < uint(workCount); i++ {
+		decodeWork[i] = make([]byte, bufferBytes)
+	}
+	//res := LeoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), originalData, encodeWork)
+	//fmt.Println(res)
+
+	err := LeoEncode2(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), originalData, encodeWork)
+	assert.Equal(t, err, 0)
+
+	//fmt.Println(encodeWork)
+	err = LeoDecode2(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), originalData, encodeWork, decodeWork)
+	//fmt.Println(originalData)
+	//fmt.Println(decodeWork)
+	fmt.Println(err)
+	assert.Equal(t, err, 0)
+	//assert.EqualValues(t, originalData, decodeWork)
+	for i := 0; i < int(workCount); i++ {
+		fmt.Println("---")
+		fmt.Println(originalData[i])
+		fmt.Println(decodeWork[i])
+		fmt.Println("---")
+
 	}
 }

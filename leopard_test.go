@@ -44,7 +44,7 @@ func TestEncodeWorkCount(t *testing.T) {
 }
 
 func TestEncode(t *testing.T) {
-	originalCount := 10
+	originalCount := 1
 	recoveryCount := 1
 	bufferBytes := 640
 	originalData := make([][]byte, originalCount)

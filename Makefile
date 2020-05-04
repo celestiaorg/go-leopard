@@ -12,5 +12,5 @@ build-cleo:
 	cd leopard/build && make libleopard
 
 test:
-	cd leopard && go build
+	cd leopard && go test
 	

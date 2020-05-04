@@ -185,22 +185,7 @@ LEO_EXPORT LeopardResult leo_encode(
     const void* const * const original_data,  // Array of pointers to original data buffers
     void** work_data);                        // Array of work buffers
 
-static LeopardResult leo_encode2(
-    uint64_t buffer_bytes,                    // Number of bytes in each data buffer
-    unsigned original_count,                  // Number of original_data[] buffer pointers
-    unsigned recovery_count,                  // Number of recovery_data[] buffer pointers
-    unsigned work_count,                      // Number of work_data[] buffer pointers, from leo_encode_work_count()
-    uint8_t** original_data,  // Array of pointers to original data buffers
-    uint8_t** work_data)                        // Array of work buffers
-    {
-        return leo_encode(
-        buffer_bytes,
-        original_count,
-        recovery_count,
-         work_count,
-         (void**)original_data,
-         (void**)work_data);
-    }
+
 //------------------------------------------------------------------------------
 // Decoder API
 
@@ -248,24 +233,6 @@ LEO_EXPORT LeopardResult leo_decode(
     const void* const * const recovery_data,  // Array of recovery data buffers
     void** work_data);                        // Array of work data buffers
 
-static LeopardResult leo_decode2(
-        uint64_t buffer_bytes,                    // Number of bytes in each data buffer
-        unsigned original_count,                  // Number of original_data[] buffer pointers
-        unsigned recovery_count,                  // Number of recovery_data[] buffer pointers
-        unsigned work_count,                      // Number of buffer pointers in work_data[]
-        uint8_t** original_data,  // Array of original data buffers
-        uint8_t** recovery_data,  // Array of recovery data buffers
-        uint8_t** work_data){
-    return leo_decode(
-            buffer_bytes,
-            original_count,
-            recovery_count,
-            work_count,
-            (void**)original_data,
-            (void**)recovery_data,
-            (void**)work_data);
-
-}
 
 #ifdef __cplusplus
 }

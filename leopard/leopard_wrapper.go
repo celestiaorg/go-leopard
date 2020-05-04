@@ -18,31 +18,31 @@ var (
 	ErrCallInitialize = errors.New("call leo_init() first")
 )
 
-func leopardResultToErr(errCode int32) error {
+func leopardResultToErr(errCode leopardresult) error {
 	switch errCode {
-	case 0:
+	case leopardSuccess:
 		return nil
-	case -1:
+	case leopardNeedmoredata:
 		return ErrNeedMoreData
-	case -2:
+	case leopardToomuchdata:
 		return ErrTooMuchData
-	case -3:
+	case leopardInvalidsize:
 		return ErrInvalidSize
-	case -4:
+	case leopardInvalidcounts:
 		return ErrInvalidCounts
-	case -5:
+	case leopardInvalidinput:
 		return ErrInvalidInput
-	case -6:
+	case leopardPlatform:
 		return ErrPlatform
-	case -7:
+	case leopardCallinitialize:
 		return ErrCallInitialize
 	default:
-		panic("Yelp")
+		panic("unexpected leopard return code")
 	}
 }
 
 func Init() error {
-	return leopardResultToErr(leoInit(2))
+	return leopardResultToErr(leopardresult(leoInit(2)))
 }
 
 // TODO We probably do not need to export this?

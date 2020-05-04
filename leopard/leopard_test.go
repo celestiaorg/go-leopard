@@ -77,13 +77,13 @@ func TestItWorks(t *testing.T) {
 
 	decodeWorkPtr := convert(decodeWork)
 
-	// loose some orig data:
+	// lose some orig data:
 	// Todo: we'd need to free the C.malloc'd memory
 	origDataPtr[11] = nil
 	origDataPtr[13] = nil
 	origDataPtr[23] = nil
 
-	// loose some recovery data:
+	// lose some recovery data:
 	// Todo: we'd need to free the C.malloc'd memory
 	encodeWorkPtr[5] = nil
 	encodeWorkPtr[10] = nil

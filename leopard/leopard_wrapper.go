@@ -4,6 +4,7 @@ import "C"
 
 import (
 	"errors"
+	"unsafe"
 )
 
 var (
@@ -47,4 +48,15 @@ func Init() error {
 // TODO We probably do not need to export this?
 func EncodeWorkCount(origCount, recoveryCount uint32) uint32 {
 	return leoEncodeWorkCount(origCount, recoveryCount)
+}
+
+func convert(data [][]byte) []unsafe.Pointer {
+	res := make([]unsafe.Pointer, len(data))
+	for i, d := range data {
+		p := C.malloc(C.size_t(len(d)))
+		cBuf := (*[1 << 30]byte)(p)
+		copy(cBuf[:], d)
+		res[i] = unsafe.Pointer(cBuf)
+	}
+	return res
 }

@@ -14,13 +14,13 @@ func TestInitLeo(t *testing.T) {
 
 func TestEncodeWorkCount(t *testing.T) {
 	type args struct {
-		origCount     uint64
-		recoveryCount uint64
+		origCount     uint32
+		recoveryCount uint32
 	}
 	tests := []struct {
 		name string
 		args args
-		want uint64
+		want uint32
 	}{
 		{"edge case: 1, 1", args{1, 1}, 1},
 		{"edge case: 1, 2", args{1, 2}, 2},
@@ -46,16 +46,15 @@ func TestEncodeWorkCount(t *testing.T) {
 func TestEncode(t *testing.T) {
 	originalCount := 1
 	recoveryCount := 1
-	bufferBytes := 640
+	const bufferBytes = 640
 	originalData := make([][]byte, originalCount)
 	for i := 0; i < originalCount; i++ {
 		originalData[i] = make([]byte, bufferBytes)
 		rand.Read(originalData[i])
 	}
-
 	assert.NoError(t, Init())
 
-	workCount := EncodeWorkCount(uint64(originalCount), uint64(recoveryCount))
+	workCount := EncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
 	var encodeWork = make([][]byte, workCount)
 	for i := uint(0); i < uint(workCount); i++ {
 		encodeWork[i] = make([]byte, bufferBytes)
@@ -64,24 +63,18 @@ func TestEncode(t *testing.T) {
 	for i := uint(0); i < uint(workCount); i++ {
 		decodeWork[i] = make([]byte, bufferBytes)
 	}
-	//res := LeoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), originalData, encodeWork)
-	//fmt.Println(res)
 
-	err := LeoEncode2(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), originalData, encodeWork)
-	assert.Equal(t, err, 0)
+	origDataPtr := convert(originalData)
+	encodeWorkPtr := convert(encodeWork)
+	err := leoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), origDataPtr, encodeWorkPtr)
+	assert.Equal(t, err, leopardSuccess)
 
-	//fmt.Println(encodeWork)
-	err = LeoDecode2(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), originalData, encodeWork, decodeWork)
-	//fmt.Println(originalData)
-	//fmt.Println(decodeWork)
+	decodeWorkPtr := convert(decodeWork)
+	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), origDataPtr, encodeWorkPtr, decodeWorkPtr)
 	fmt.Println(err)
-	assert.Equal(t, err, 0)
-	//assert.EqualValues(t, originalData, decodeWork)
+	assert.Equal(t, err, leopardSuccess)
 	for i := 0; i < int(workCount); i++ {
-		fmt.Println("---")
-		fmt.Println(originalData[i])
-		fmt.Println(decodeWork[i])
-		fmt.Println("---")
-
+		assert.EqualValues(t, *(*[bufferBytes]byte)(decodeWorkPtr[i]), *(*[bufferBytes]byte)(origDataPtr[i]))
+		fmt.Println("---", i)
 	}
 }

@@ -1,11 +1,13 @@
 package leopard
 
 import (
-	"fmt"
+	"bytes"
+	"crypto/md5"
 	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInitLeo(t *testing.T) {
@@ -43,38 +45,80 @@ func TestEncodeWorkCount(t *testing.T) {
 	}
 }
 
-func TestEncode(t *testing.T) {
-	originalCount := 1
-	recoveryCount := 1
-	const bufferBytes = 640
+// Simple test that reproduces what leopard/tests/benchmark.cpp:378 does
+// but much simpler and just to verify that we can succuesfully
+// go from leoEncode back with leoDecode (unsing Golang `[][]byte`s).
+func TestItWorks(t *testing.T) {
+	const originalCount = 1000
+	const recoveryCount = 100
+	const bufferBytes = 64000
 	originalData := make([][]byte, originalCount)
 	for i := 0; i < originalCount; i++ {
 		originalData[i] = make([]byte, bufferBytes)
-		rand.Read(originalData[i])
+		checkedRandBytes(originalData[i])
 	}
 	assert.NoError(t, Init())
 
 	workCount := EncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
+	decodeWorkCount := leoDecodeWorkCount(uint32(originalCount), uint32(recoveryCount))
 	var encodeWork = make([][]byte, workCount)
 	for i := uint(0); i < uint(workCount); i++ {
 		encodeWork[i] = make([]byte, bufferBytes)
 	}
-	var decodeWork = make([][]byte, workCount)
-	for i := uint(0); i < uint(workCount); i++ {
+	var decodeWork = make([][]byte, decodeWorkCount)
+	for i := uint(0); i < uint(decodeWorkCount); i++ {
 		decodeWork[i] = make([]byte, bufferBytes)
 	}
 
 	origDataPtr := convert(originalData)
 	encodeWorkPtr := convert(encodeWork)
-	err := leoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), origDataPtr, encodeWorkPtr)
-	assert.Equal(t, err, leopardSuccess)
+	err := leoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), workCount, origDataPtr, encodeWorkPtr)
+	require.Equal(t, err, leopardSuccess)
 
 	decodeWorkPtr := convert(decodeWork)
-	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), uint32(workCount), origDataPtr, encodeWorkPtr, decodeWorkPtr)
-	fmt.Println(err)
-	assert.Equal(t, err, leopardSuccess)
-	for i := 0; i < int(workCount); i++ {
-		assert.EqualValues(t, *(*[bufferBytes]byte)(decodeWorkPtr[i]), *(*[bufferBytes]byte)(origDataPtr[i]))
-		fmt.Println("---", i)
+
+	// loose some orig data:
+	// Todo: we'd need to free the C.malloc'd memory
+	origDataPtr[11] = nil
+	origDataPtr[13] = nil
+	origDataPtr[23] = nil
+
+	// loose some recovery data:
+	// Todo: we'd need to free the C.malloc'd memory
+	encodeWorkPtr[5] = nil
+	encodeWorkPtr[10] = nil
+	encodeWorkPtr[23] = nil
+
+	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), decodeWorkCount, origDataPtr, encodeWorkPtr, decodeWorkPtr)
+	require.Equal(t, err, leopardSuccess)
+	for i := 0; i < int(originalCount); i++ {
+		if origDataPtr[i] == nil {
+			d := *(*[bufferBytes]byte)(decodeWorkPtr[i])
+			assert.Equal(t, true, checkBytes(d[:]))
+		}
 	}
+}
+
+func checkedRandBytes(p []byte) {
+	if len(p) <= md5.Size {
+		panic("provided slice is too small")
+	}
+	raw := make([]byte, len(p)-md5.Size)
+	rand.Read(raw)
+	chksm := md5.Sum(raw)
+	copy(p, raw)
+	copy(p[len(p)-md5.Size:], chksm[:])
+}
+
+func checkBytes(p []byte) bool {
+	if len(p) <= md5.Size {
+		panic("provided slice is too small")
+	}
+	data := p[:len(p)-md5.Size]
+	readChksm := p[len(p)-md5.Size:]
+	chksm := md5.Sum(data)
+	if !bytes.Equal(readChksm, chksm[:]) {
+		return false
+	}
+	return true
 }

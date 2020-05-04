@@ -6,6 +6,11 @@ clean:
 	rm -f leopard/const.go leopard/doc.go leopard/types.go
 	rm -f leopard/leopard.go
 
+build-cleo:
+	git submodule update --init --recursive
+	cmake -S leopard/leopard/ -B leopard/build
+	cd leopard/build && make libleopard
+
 test:
 	cd leopard && go build
 	

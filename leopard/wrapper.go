@@ -1,5 +1,6 @@
 package leopard
 
+//#include <stdlib.h>
 import "C"
 
 import (
@@ -15,8 +16,10 @@ var (
 	ErrInvalidInput  = errors.New("a function parameter was invalid")
 	ErrPlatform      = errors.New("platform is unsupported")
 
-	ErrCallInitialize = errors.New("call leo_init() first")
+	ErrCallInitialize = errors.New("call leopard.Init() first")
 )
+
+const version = 2
 
 func leopardResultToErr(errCode leopardresult) error {
 	switch errCode {
@@ -42,21 +45,31 @@ func leopardResultToErr(errCode leopardresult) error {
 }
 
 func Init() error {
-	return leopardResultToErr(leopardresult(leoInit(2)))
+	return leopardResultToErr(leopardresult(leoInit(version)))
 }
 
-// TODO We probably do not need to export this?
 func EncodeWorkCount(origCount, recoveryCount uint32) uint32 {
 	return leoEncodeWorkCount(origCount, recoveryCount)
 }
 
-func convert(data [][]byte) []unsafe.Pointer {
+// copy over to C allocated memory:
+func copyToCmallocedPtrs(data [][]byte) []unsafe.Pointer {
 	res := make([]unsafe.Pointer, len(data))
 	for i, d := range data {
-		p := C.malloc(C.size_t(len(d)))
-		cBuf := (*[1 << 30]byte)(p)
-		copy(cBuf[:], d)
-		res[i] = unsafe.Pointer(cBuf)
+		if len(d) > 0 {
+			cBuf := C.CBytes(d)
+			res[i] = unsafe.Pointer(cBuf)
+		} else {
+			// keep this nil as leopard uses this internally
+			res[i] = nil
+		}
 	}
 	return res
+}
+
+// wrapper around C.free (can also be used in tests)
+func freeAndNilBuf(p unsafe.Pointer) {
+	// if p represents NULL this is a nop:
+	C.free(p)
+	p = nil
 }

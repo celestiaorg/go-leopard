@@ -70,24 +70,22 @@ func TestItWorks(t *testing.T) {
 		decodeWork[i] = make([]byte, bufferBytes)
 	}
 
-	origDataPtr := convert(originalData)
-	encodeWorkPtr := convert(encodeWork)
+	origDataPtr := copyToCmallocedPtrs(originalData)
+	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
 	err := leoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), workCount, origDataPtr, encodeWorkPtr)
 	require.Equal(t, err, leopardSuccess)
 
-	decodeWorkPtr := convert(decodeWork)
+	decodeWorkPtr := copyToCmallocedPtrs(decodeWork)
 
 	// lose some orig data:
-	// Todo: we'd need to free the C.malloc'd memory
-	origDataPtr[11] = nil
-	origDataPtr[13] = nil
-	origDataPtr[23] = nil
+	freeAndNilBuf(origDataPtr[11])
+	freeAndNilBuf(origDataPtr[13])
+	freeAndNilBuf(origDataPtr[23])
 
 	// lose some recovery data:
-	// Todo: we'd need to free the C.malloc'd memory
-	encodeWorkPtr[5] = nil
-	encodeWorkPtr[10] = nil
-	encodeWorkPtr[23] = nil
+	freeAndNilBuf(encodeWorkPtr[5])
+	freeAndNilBuf(encodeWorkPtr[10])
+	freeAndNilBuf(encodeWorkPtr[23])
 
 	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), decodeWorkCount, origDataPtr, encodeWorkPtr, decodeWorkPtr)
 	require.Equal(t, err, leopardSuccess)

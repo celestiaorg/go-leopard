@@ -57,7 +57,7 @@ func TestItWorks(t *testing.T) {
 		originalData[i] = make([]byte, bufferBytes)
 		checkedRandBytes(originalData[i])
 	}
-	assert.NoError(t, Init())
+	require.NoError(t, Init())
 
 	workCount := EncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
 	decodeWorkCount := leoDecodeWorkCount(uint32(originalCount), uint32(recoveryCount))

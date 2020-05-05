@@ -10,10 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInitLeo(t *testing.T) {
-	assert.NoError(t, Init())
-}
-
 func TestEncodeWorkCount(t *testing.T) {
 	type args struct {
 		origCount     uint32
@@ -38,7 +34,7 @@ func TestEncodeWorkCount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := EncodeWorkCount(tt.args.origCount, tt.args.recoveryCount); got != tt.want {
+			if got := leoEncodeWorkCount(tt.args.origCount, tt.args.recoveryCount); got != tt.want {
 				t.Errorf("EncodeWorkCount() = %v, want %v", got, tt.want)
 			}
 		})
@@ -46,11 +42,11 @@ func TestEncodeWorkCount(t *testing.T) {
 }
 
 // Simple test that reproduces what leopard/tests/benchmark.cpp:378 does
-// but much simpler and just to verify that we can succuesfully
-// go from leoEncode back with leoDecode (unsing Golang `[][]byte`s).
+// but much simpler and just to verify that we can successfully
+// go from leoEncode back with leoDecode (using Golang `[][]byte`s).
 func TestItWorks(t *testing.T) {
-	const originalCount = 1000
-	const recoveryCount = 100
+	const originalCount = 1024
+	const recoveryCount = 512
 	const bufferBytes = 64000
 	originalData := make([][]byte, originalCount)
 	for i := 0; i < originalCount; i++ {
@@ -59,7 +55,7 @@ func TestItWorks(t *testing.T) {
 	}
 	require.NoError(t, Init())
 
-	workCount := EncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
+	workCount := leoEncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
 	decodeWorkCount := leoDecodeWorkCount(uint32(originalCount), uint32(recoveryCount))
 	var encodeWork = make([][]byte, workCount)
 	for i := uint(0); i < uint(workCount); i++ {
@@ -89,7 +85,7 @@ func TestItWorks(t *testing.T) {
 
 	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), decodeWorkCount, origDataPtr, encodeWorkPtr, decodeWorkPtr)
 	require.Equal(t, err, leopardSuccess)
-	for i := 0; i < int(originalCount); i++ {
+	for i := 0; i < originalCount; i++ {
 		if origDataPtr[i] == nil {
 			d := *(*[bufferBytes]byte)(decodeWorkPtr[i])
 			assert.Equal(t, true, checkBytes(d[:]))

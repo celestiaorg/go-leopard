@@ -48,8 +48,48 @@ func Init() error {
 	return leopardResultToErr(leopardresult(leoInit(version)))
 }
 
-func EncodeWorkCount(origCount, recoveryCount uint32) uint32 {
-	return leoEncodeWorkCount(origCount, recoveryCount)
+func Encode(data [][]byte) (encodeWork [][]byte, err error) {
+	origCount, bufferBytes, err := extract(data)
+	if err != nil {
+		return nil, err
+	}
+	recoveryCount := origCount / 2
+	workCount := leoEncodeWorkCount(origCount, recoveryCount)
+	origDataPtrs := copyToCmallocedPtrs(data)
+	defer free(origDataPtrs)
+
+	encodeWork = make([][]byte, workCount)
+	for i := uint(0); i < uint(workCount); i++ {
+		encodeWork[i] = make([]byte, bufferBytes)
+	}
+	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
+	err = leopardResultToErr(leoEncode(bufferBytes, origCount, recoveryCount, workCount, origDataPtrs, encodeWorkPtr))
+	if err != nil {
+		return nil, err
+	}
+	toGoByte(encodeWorkPtr, encodeWork, int(bufferBytes))
+	return encodeWork, nil
+}
+
+func Decode(data [][]byte) ([][]byte, error) {
+	panic("implement")
+}
+
+func extract(data [][]byte) (origCount uint32, bufferBytes uint64, err error) {
+	origCount = uint32(len(data))
+	if origCount == 0 {
+		err = errors.New("zero length data")
+		return
+	}
+	bufferBytes = uint64(len(data[0]))
+	// TODO can we do without verifying that all buffers have the same size?
+	for _, d := range data {
+		if uint64(len(d)) != bufferBytes {
+			err = errors.New("each buffer should have the same size")
+			return
+		}
+	}
+	return
 }
 
 // copy over to C allocated memory:
@@ -67,9 +107,24 @@ func copyToCmallocedPtrs(data [][]byte) []unsafe.Pointer {
 	return res
 }
 
+func toGoByte(ps []unsafe.Pointer, res [][]byte, bufferBytes int) {
+	if len(ps) != len(res) {
+		panic("can't convert back to go slice")
+	}
+	for i, p := range ps {
+		res[i] = (*[1 << 30]byte)(p)[0:bufferBytes]
+	}
+}
+
 // wrapper around C.free (can also be used in tests)
 func freeAndNilBuf(p unsafe.Pointer) {
 	// if p represents NULL this is a nop:
 	C.free(p)
 	p = nil
+}
+
+func free(ps []unsafe.Pointer) {
+	for _, p := range ps {
+		freeAndNilBuf(p)
+	}
 }

@@ -48,6 +48,7 @@ func Init() error {
 	return leopardResultToErr(leopardresult(leoInit(version)))
 }
 
+// Encode takes an slice of equally sized byte slices and computes len(data) parity shares.
 func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 	origCount, bufferBytes, err := extract(data)
 	if err != nil {
@@ -63,16 +64,61 @@ func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 		encodeWork[i] = make([]byte, bufferBytes)
 	}
 	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
-	err = leopardResultToErr(leoEncode(bufferBytes, origCount, recoveryCount, workCount, origDataPtrs, encodeWorkPtr))
+	defer free(encodeWorkPtr)
+
+	err = leopardResultToErr(leoEncode(
+		bufferBytes,
+		origCount,
+		recoveryCount,
+		workCount,
+		origDataPtrs,
+		encodeWorkPtr))
 	if err != nil {
-		return nil, err
+		return
 	}
 	toGoByte(encodeWorkPtr, encodeWork, int(bufferBytes))
 	return encodeWork, nil
 }
 
-func Decode(data [][]byte) ([][]byte, error) {
-	panic("implement")
+// Decode takes in what is left from the original data and the extended recovery data
+// and recovers missing data (upto half of the total data can be missing).
+// Missing data (either original or recovery) has to be nil.
+func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
+	_, bufferBytes, err := extract(recovery)
+	if err != nil {
+		return
+	}
+	origCount := uint32(len(orig))
+	recoveryCount := origCount / 2
+	decodeWorkCount := leoDecodeWorkCount(origCount, recoveryCount)
+
+	decodeWork = make([][]byte, decodeWorkCount)
+	for i := uint(0); i < uint(decodeWorkCount); i++ {
+		decodeWork[i] = make([]byte, bufferBytes)
+	}
+	decodeWorkPtr := copyToCmallocedPtrs(decodeWork)
+	defer free(decodeWorkPtr)
+	origDataPtr := copyToCmallocedPtrs(orig)
+	defer free(origDataPtr)
+
+	recoveryDataPtr := copyToCmallocedPtrs(recovery)
+	defer free(recoveryDataPtr)
+
+	err = leopardResultToErr(leoDecode(
+		bufferBytes,
+		origCount,
+		recoveryCount,
+		decodeWorkCount,
+		origDataPtr,
+		recoveryDataPtr,
+		decodeWorkPtr))
+	if err != nil {
+		return
+	}
+
+	toGoByte(decodeWorkPtr, decodeWork, int(bufferBytes))
+
+	return
 }
 
 func extract(data [][]byte) (origCount uint32, bufferBytes uint64, err error) {
@@ -81,11 +127,11 @@ func extract(data [][]byte) (origCount uint32, bufferBytes uint64, err error) {
 		err = errors.New("zero length data")
 		return
 	}
-	bufferBytes = uint64(len(data[0]))
+	bufferBytes = uint64(len(data[len(data)-1]))
 	// TODO can we do without verifying that all buffers have the same size?
 	for _, d := range data {
-		if uint64(len(d)) != bufferBytes {
-			err = errors.New("each buffer should have the same size")
+		if d != nil && uint64(len(d)) != bufferBytes {
+			err = errors.New("each buffer should have the same size or can be nil")
 			return
 		}
 	}
@@ -112,7 +158,12 @@ func toGoByte(ps []unsafe.Pointer, res [][]byte, bufferBytes int) {
 		panic("can't convert back to go slice")
 	}
 	for i, p := range ps {
-		res[i] = (*[1 << 30]byte)(p)[0:bufferBytes]
+		res[i] = make([]byte, bufferBytes)
+		b := res[i]
+		for j := 0; j < bufferBytes; j++ {
+			// creates a copy of the data
+			b[j] = *(*byte)(unsafe.Pointer(uintptr(p) + uintptr(j)))
+		}
 	}
 }
 

@@ -46,7 +46,7 @@ func TestEncodeWorkCount(t *testing.T) {
 // go from leoEncode back with leoDecode (using Golang `[][]byte`s).
 func TestItWorks(t *testing.T) {
 	const originalCount = 1024
-	const recoveryCount = 512
+	const recoveryCount = 512 // can lose upto half of the total data (orig or recovery)
 	const bufferBytes = 64000
 	originalData := make([][]byte, originalCount)
 	for i := 0; i < originalCount; i++ {
@@ -55,10 +55,13 @@ func TestItWorks(t *testing.T) {
 	}
 	require.NoError(t, Init())
 
-	workCount := leoEncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
+	encodeWorkCount := leoEncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
 	decodeWorkCount := leoDecodeWorkCount(uint32(originalCount), uint32(recoveryCount))
-	var encodeWork = make([][]byte, workCount)
-	for i := uint(0); i < uint(workCount); i++ {
+	assert.Equal(t, originalCount, int(encodeWorkCount))
+	assert.Equal(t, originalCount*2, int(decodeWorkCount))
+
+	var encodeWork = make([][]byte, encodeWorkCount)
+	for i := uint(0); i < uint(encodeWorkCount); i++ {
 		encodeWork[i] = make([]byte, bufferBytes)
 	}
 	var decodeWork = make([][]byte, decodeWorkCount)
@@ -68,15 +71,15 @@ func TestItWorks(t *testing.T) {
 
 	origDataPtr := copyToCmallocedPtrs(originalData)
 	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
-	err := leoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), workCount, origDataPtr, encodeWorkPtr)
+	err := leoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), encodeWorkCount, origDataPtr, encodeWorkPtr)
 	require.Equal(t, err, leopardSuccess)
 
 	decodeWorkPtr := copyToCmallocedPtrs(decodeWork)
 
-	// lose some orig data:
-	freeAndNilBuf(origDataPtr[11])
-	freeAndNilBuf(origDataPtr[13])
-	freeAndNilBuf(origDataPtr[23])
+	// lose half the orig data:
+	for i := 0; i < originalCount/2; i++ {
+		origDataPtr[i] = nil
+	}
 
 	// lose some recovery data:
 	freeAndNilBuf(encodeWorkPtr[5])
@@ -84,7 +87,7 @@ func TestItWorks(t *testing.T) {
 	freeAndNilBuf(encodeWorkPtr[23])
 
 	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), decodeWorkCount, origDataPtr, encodeWorkPtr, decodeWorkPtr)
-	require.Equal(t, err, leopardSuccess)
+	require.Equal(t, leopardSuccess, err)
 	for i := 0; i < originalCount; i++ {
 		if origDataPtr[i] == nil {
 			d := *(*[bufferBytes]byte)(decodeWorkPtr[i])

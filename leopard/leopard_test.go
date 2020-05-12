@@ -87,9 +87,9 @@ func TestItWorks(t *testing.T) {
 	}
 
 	// lose some recovery data:
-	freeAndNilBuf(encodeWorkPtr[5])
-	freeAndNilBuf(encodeWorkPtr[10])
-	freeAndNilBuf(encodeWorkPtr[23])
+	// freeAndNilBuf(encodeWorkPtr[5])
+	// freeAndNilBuf(encodeWorkPtr[10])
+	// freeAndNilBuf(encodeWorkPtr[23])
 
 	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), decodeWorkCount, origDataPtr, encodeWorkPtr, decodeWorkPtr)
 	require.Equal(t, leopardSuccess, err)

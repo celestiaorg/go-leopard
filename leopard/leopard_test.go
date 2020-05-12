@@ -46,8 +46,8 @@ func TestEncodeWorkCount(t *testing.T) {
 // go from leoEncode back with leoDecode (using Golang `[][]byte`s).
 func TestItWorks(t *testing.T) {
 	const originalCount = 1024
-	const recoveryCount = 512 // can lose upto half of the total data (orig or recovery)
-	const bufferBytes = 64000
+	const recoveryCount = 1024 // can lose upto half of the total data (orig and recovery)
+	const bufferBytes = 64     // smallest possible buffer
 	originalData := make([][]byte, originalCount)
 	for i := 0; i < originalCount; i++ {
 		originalData[i] = make([]byte, bufferBytes)
@@ -57,7 +57,7 @@ func TestItWorks(t *testing.T) {
 
 	encodeWorkCount := leoEncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
 	decodeWorkCount := leoDecodeWorkCount(uint32(originalCount), uint32(recoveryCount))
-	assert.Equal(t, originalCount, int(encodeWorkCount))
+	assert.Equal(t, originalCount*2, int(encodeWorkCount))
 	assert.Equal(t, originalCount*2, int(decodeWorkCount))
 
 	var encodeWork = make([][]byte, encodeWorkCount)
@@ -79,6 +79,11 @@ func TestItWorks(t *testing.T) {
 	// lose half the orig data:
 	for i := 0; i < originalCount/2; i++ {
 		origDataPtr[i] = nil
+	}
+
+	// To lose all recovery data:
+	for i := 0; i < originalCount/2; i++ {
+		//encodeWorkPtr[i] = nil
 	}
 
 	// lose some recovery data:

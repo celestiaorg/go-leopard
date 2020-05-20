@@ -2,10 +2,12 @@ package leopard
 
 //#include <stdlib.h>
 import "C"
-
 import (
 	"errors"
+	"fmt"
 	"unsafe"
+
+	. "github.com/liamsi/go-leopard/leopard"
 )
 
 var (
@@ -16,36 +18,42 @@ var (
 	ErrInvalidInput  = errors.New("a function parameter was invalid")
 	ErrPlatform      = errors.New("platform is unsupported")
 
-	ErrCallInitialize = errors.New("call leopard.Init() first")
+	ErrCallInitialize = errors.New("call Init() first")
 )
 
 const version = 2
 
-func leopardResultToErr(errCode leopardresult) error {
+func init() {
+	if err := Init(); err != nil {
+		panic(fmt.Sprintf("Unexpected error while initializing leopard %v", err))
+	}
+}
+
+func leopardResultToErr(errCode Leopardresult) error {
 	switch errCode {
-	case leopardSuccess:
+	case LeopardSuccess:
 		return nil
-	case leopardNeedmoredata:
+	case LeopardNeedmoredata:
 		return ErrNeedMoreData
-	case leopardToomuchdata:
+	case LeopardToomuchdata:
 		return ErrTooMuchData
-	case leopardInvalidsize:
+	case LeopardInvalidsize:
 		return ErrInvalidSize
-	case leopardInvalidcounts:
+	case LeopardInvalidcounts:
 		return ErrInvalidCounts
-	case leopardInvalidinput:
+	case LeopardInvalidinput:
 		return ErrInvalidInput
-	case leopardPlatform:
+	case LeopardPlatform:
 		return ErrPlatform
-	case leopardCallinitialize:
+	case LeopardCallinitialize:
 		return ErrCallInitialize
 	default:
-		panic("unexpected leopard return code")
+		panic("unexpected Leopard return code")
 	}
 }
 
 func Init() error {
-	return leopardResultToErr(leopardresult(leoInit(version)))
+	return leopardResultToErr(Leopardresult(LeoInit(version)))
 }
 
 // Encode takes an slice of equally sized byte slices and computes len(data) parity shares.
@@ -56,7 +64,7 @@ func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 		return nil, err
 	}
 	recoveryCount := origCount
-	workCount := leoEncodeWorkCount(origCount, recoveryCount)
+	workCount := LeoEncodeWorkCount(origCount, recoveryCount)
 	origDataPtrs := copyToCmallocedPtrs(data)
 	defer freeAll(origDataPtrs)
 
@@ -67,7 +75,7 @@ func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
 	defer freeAll(encodeWorkPtr)
 
-	err = leopardResultToErr(leoEncode(
+	err = leopardResultToErr(LeoEncode(
 		bufferBytes,
 		origCount,
 		recoveryCount,
@@ -91,7 +99,7 @@ func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 	}
 	origCount := uint32(len(orig))
 	recoveryCount := origCount
-	decodeWorkCount := leoDecodeWorkCount(origCount, recoveryCount)
+	decodeWorkCount := LeoDecodeWorkCount(origCount, recoveryCount)
 
 	decodeWork = make([][]byte, decodeWorkCount)
 	for i := uint(0); i < uint(decodeWorkCount); i++ {
@@ -105,7 +113,7 @@ func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 	recoveryDataPtr := copyToCmallocedPtrs(recovery)
 	defer freeAll(recoveryDataPtr)
 
-	err = leopardResultToErr(leoDecode(
+	err = leopardResultToErr(LeoDecode(
 		bufferBytes,
 		origCount,
 		recoveryCount,
@@ -152,7 +160,7 @@ func copyByteBuffer(d []byte) unsafe.Pointer {
 	if len(d) > 0 {
 		return C.CBytes(d)
 	} else {
-		// keep this nil as leopard uses this internally
+		// keep this nil as Leopard uses this internally
 		return nil
 	}
 }
@@ -175,7 +183,6 @@ func toGoByte(ps []unsafe.Pointer, res [][]byte, bufferBytes int) {
 func freeAndNil(p unsafe.Pointer) {
 	if p != nil {
 		C.free(p)
-		p = nil
 	}
 }
 

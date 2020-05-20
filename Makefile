@@ -1,6 +1,6 @@
 # default target: build if necessary and run tests
 test: build-cleo
-	cd leopard && GODEBUG=cgocheck=2 go test -v
+	GODEBUG=cgocheck=2 go test -v ./...
 
 # only necessary if you need to re-generate the c-go bindings
 # Note: deletes all previously generated c-go bindings and

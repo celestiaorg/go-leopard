@@ -32,7 +32,7 @@ TRANSLATOR:
       - {transform: lower}
       - {action: accept, from: "^leo"}
       - {action: accept, from: "^Leopard"}
-      - {transform: unexport}
+      - {transform: export}
     type:
       - {action: accept, from: "^Leopard"}
     private:

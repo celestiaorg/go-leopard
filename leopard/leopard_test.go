@@ -1,13 +1,7 @@
 package leopard
 
 import (
-	"bytes"
-	"crypto/md5"
-	"math/rand"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestEncodeWorkCount(t *testing.T) {
@@ -34,88 +28,9 @@ func TestEncodeWorkCount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := leoEncodeWorkCount(tt.args.origCount, tt.args.recoveryCount); got != tt.want {
+			if got := LeoEncodeWorkCount(tt.args.origCount, tt.args.recoveryCount); got != tt.want {
 				t.Errorf("EncodeWorkCount() = %v, want %v", got, tt.want)
 			}
 		})
 	}
-}
-
-// Simple test that reproduces what leopard/tests/benchmark.cpp:378 does
-// but much simpler and just to verify that we can successfully
-// go from leoEncode back with leoDecode (using Golang `[][]byte`s).
-func TestItWorks(t *testing.T) {
-	const originalCount = 1024
-	const recoveryCount = 1024 // can lose upto half of the total data (orig and recovery)
-	const bufferBytes = 64     // smallest possible buffer
-	const lossCount = 1024
-	originalData := make([][]byte, originalCount)
-	for i := 0; i < originalCount; i++ {
-		originalData[i] = make([]byte, bufferBytes)
-		checkedRandBytes(originalData[i])
-	}
-	require.NoError(t, Init())
-
-	encodeWorkCount := leoEncodeWorkCount(uint32(originalCount), uint32(recoveryCount))
-	decodeWorkCount := leoDecodeWorkCount(uint32(originalCount), uint32(recoveryCount))
-	assert.Equal(t, originalCount*2, int(encodeWorkCount))
-	assert.Equal(t, originalCount*2, int(decodeWorkCount))
-
-	var encodeWork = make([][]byte, encodeWorkCount)
-	for i := uint(0); i < uint(encodeWorkCount); i++ {
-		encodeWork[i] = make([]byte, bufferBytes)
-	}
-	var decodeWork = make([][]byte, decodeWorkCount)
-	for i := uint(0); i < uint(decodeWorkCount); i++ {
-		decodeWork[i] = make([]byte, bufferBytes)
-	}
-
-	origDataPtr := copyToCmallocedPtrs(originalData)
-	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
-	err := leoEncode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), encodeWorkCount, origDataPtr, encodeWorkPtr)
-	require.Equal(t, err, leopardSuccess)
-
-	decodeWorkPtr := copyToCmallocedPtrs(decodeWork)
-
-	// lose lossCount data:
-	lostIdxs := map[int32]struct{}{}
-	for len(lostIdxs) < lossCount {
-		loseIdx := rand.Int31n(lossCount)
-		if _, alreadyLost := lostIdxs[loseIdx]; !alreadyLost {
-			freeAndNil(origDataPtr[loseIdx])
-			lostIdxs[loseIdx] = struct{}{}
-		}
-	}
-	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), decodeWorkCount, origDataPtr, encodeWorkPtr, decodeWorkPtr)
-	require.Equal(t, leopardSuccess, err)
-	for i := 0; i < originalCount; i++ {
-		if origDataPtr[i] == nil {
-			d := *(*[bufferBytes]byte)(decodeWorkPtr[i])
-			assert.Equal(t, true, checkBytes(d[:]))
-		}
-	}
-}
-
-func checkedRandBytes(p []byte) {
-	if len(p) <= md5.Size {
-		panic("provided slice is too small")
-	}
-	raw := make([]byte, len(p)-md5.Size)
-	rand.Read(raw)
-	chksm := md5.Sum(raw)
-	copy(p, raw)
-	copy(p[len(p)-md5.Size:], chksm[:])
-}
-
-func checkBytes(p []byte) bool {
-	if len(p) <= md5.Size {
-		panic("provided slice is too small")
-	}
-	data := p[:len(p)-md5.Size]
-	readChksm := p[len(p)-md5.Size:]
-	chksm := md5.Sum(data)
-	if !bytes.Equal(readChksm, chksm[:]) {
-		return false
-	}
-	return true
 }

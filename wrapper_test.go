@@ -28,9 +28,11 @@ func TestEncodeSimple(t *testing.T) {
 	encoded, err := Encode(originalData)
 	assert.NoError(t, err)
 	assert.NotNil(t, encoded)
-	// due to leo_encode_work_count this has to be 2*origCount
+	// due to leo_encode_work_count internally this is 2*origCount
 	// see: https://github.com/catid/leopard/issues/15#issuecomment-631391392
-	assert.Equal(t, 2*originalCount, len(encoded))
+	// Encode does not return these superfluous buffers though and we can
+	// assume origCount == encodeCount
+	assert.Equal(t, originalCount, len(encoded))
 }
 
 func TestEncodeDecodeRoundtripSimple(t *testing.T) {
@@ -43,7 +45,7 @@ func TestEncodeDecodeRoundtripSimple(t *testing.T) {
 	}
 	encoded, err := Encode(originalData)
 	require.NoError(t, err)
-	assert.EqualValues(t, 2*originalCount, len(encoded))
+	assert.EqualValues(t, originalCount, len(encoded))
 
 	// lose all orig data:
 	for i := 0; i < originalCount; i++ {
@@ -75,12 +77,16 @@ func TestEncodeDecodeRoundtrip(t *testing.T) {
 	encoded, err := Encode(originalData)
 	require.NoError(t, err)
 
-	// lose lossCount data:
+	// lose lossCount data (original or parity):
 	lostIdxs := map[int32]struct{}{}
 	for len(lostIdxs) < lossCount {
-		loseIdx := rand.Int31n(lossCount)
+		loseIdx := rand.Int31n(lossCount + originalCount)
 		if _, alreadyLost := lostIdxs[loseIdx]; !alreadyLost {
-			encoded[loseIdx] = nil
+			if loseIdx < originalCount {
+				originalData[loseIdx] = nil
+			} else {
+				encoded[loseIdx%originalCount] = nil
+			}
 			lostIdxs[loseIdx] = struct{}{}
 		}
 	}

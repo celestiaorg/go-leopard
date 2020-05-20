@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	// to avoid repeatedly writing leopard.Leopard* below:
 	. "github.com/liamsi/go-leopard/leopard"
 )
 
@@ -19,6 +20,8 @@ var (
 	ErrPlatform      = errors.New("platform is unsupported")
 
 	ErrCallInitialize = errors.New("call Init() first")
+
+	errAllBuffersEmpty = errors.New("all buffers are empty")
 )
 
 const version = 2
@@ -59,7 +62,7 @@ func Init() error {
 // Encode takes an slice of equally sized byte slices and computes len(data) parity shares.
 // This means you can lose half of (data || encodeWork) and still recover the data.
 func Encode(data [][]byte) (encodeWork [][]byte, err error) {
-	origCount, bufferBytes, err := extract(data)
+	origCount, bufferBytes, err := extractCounts(data)
 	if err != nil {
 		return nil, err
 	}
@@ -86,15 +89,21 @@ func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 		return
 	}
 	toGoByte(encodeWorkPtr, encodeWork, int(bufferBytes))
-	return encodeWork, nil
+	// XXX: We only return half the data here as the other half is all zeroes
+	// and superfluous.
+	// For details see: https://github.com/catid/leopard/issues/15#issuecomment-631391392
+	return encodeWork[:origCount], nil
 }
 
 // Decode takes in what is left from the original data and the extended recovery data
 // and recovers missing data (upto half of the total data can be missing).
 // Missing data (either original or recovery) has to be nil.
 func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
-	_, bufferBytes, err := extract(recovery)
-	if err != nil {
+	_, bufferBytesRecov, _ := extractCounts(recovery)
+	_, bufferBytesOrig, _ := extractCounts(recovery)
+	bufferBytes := max(bufferBytesRecov, bufferBytesOrig)
+	if bufferBytes == 0 {
+		err = errAllBuffersEmpty
 		return
 	}
 	origCount := uint32(len(orig))
@@ -126,24 +135,32 @@ func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 	}
 
 	toGoByte(decodeWorkPtr, decodeWork, int(bufferBytes))
-
 	return
 }
 
-func extract(data [][]byte) (origCount uint32, bufferBytes uint64, err error) {
-	origCount = uint32(len(data))
-	if origCount == 0 {
+func max(x uint64, y uint64) uint64 {
+	if x < y {
+		return y
+	}
+	return x
+}
+
+func extractCounts(data [][]byte) (dataLen uint32, bufferBytes uint64, err error) {
+	dataLen = uint32(len(data))
+	if dataLen == 0 {
 		err = errors.New("zero length data")
 		return
 	}
-	bufferBytes = uint64(len(data[len(data)-1]))
-	// TODO can we do without verifying that all buffers have the same size?
 	for _, d := range data {
-		if d != nil && uint64(len(d)) != bufferBytes {
-			err = errors.New("each buffer should have the same size or can be nil")
+		if len(d) != 0 {
+			bufferBytes = uint64(len(d))
+			if bufferBytes%64 != 0 {
+				err = ErrInvalidSize
+			}
 			return
 		}
 	}
+	err = errAllBuffersEmpty
 	return
 }
 

@@ -48,6 +48,7 @@ func TestItWorks(t *testing.T) {
 	const originalCount = 1024
 	const recoveryCount = 1024 // can lose upto half of the total data (orig and recovery)
 	const bufferBytes = 64     // smallest possible buffer
+	const lossCount = 1024
 	originalData := make([][]byte, originalCount)
 	for i := 0; i < originalCount; i++ {
 		originalData[i] = make([]byte, bufferBytes)
@@ -76,21 +77,15 @@ func TestItWorks(t *testing.T) {
 
 	decodeWorkPtr := copyToCmallocedPtrs(decodeWork)
 
-	// lose half the orig data:
-	for i := 0; i < originalCount/2; i++ {
-		origDataPtr[i] = nil
+	// lose lossCount data:
+	lostIdxs := map[int32]struct{}{}
+	for len(lostIdxs) < lossCount {
+		loseIdx := rand.Int31n(lossCount)
+		if _, alreadyLost := lostIdxs[loseIdx]; !alreadyLost {
+			freeAndNil(origDataPtr[loseIdx])
+			lostIdxs[loseIdx] = struct{}{}
+		}
 	}
-
-	// To lose all recovery data:
-	for i := 0; i < originalCount/2; i++ {
-		//encodeWorkPtr[i] = nil
-	}
-
-	// lose some recovery data:
-	// freeAndNilBuf(encodeWorkPtr[5])
-	// freeAndNilBuf(encodeWorkPtr[10])
-	// freeAndNilBuf(encodeWorkPtr[23])
-
 	err = leoDecode(uint64(bufferBytes), uint32(originalCount), uint32(recoveryCount), decodeWorkCount, origDataPtr, encodeWorkPtr, decodeWorkPtr)
 	require.Equal(t, leopardSuccess, err)
 	for i := 0; i < originalCount; i++ {

@@ -49,22 +49,23 @@ func Init() error {
 }
 
 // Encode takes an slice of equally sized byte slices and computes len(data) parity shares.
+// This means you can lose half of (data || encodeWork) and still recover the data.
 func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 	origCount, bufferBytes, err := extract(data)
 	if err != nil {
 		return nil, err
 	}
-	recoveryCount := origCount / 2
+	recoveryCount := origCount
 	workCount := leoEncodeWorkCount(origCount, recoveryCount)
 	origDataPtrs := copyToCmallocedPtrs(data)
-	defer free(origDataPtrs)
+	defer freeAll(origDataPtrs)
 
 	encodeWork = make([][]byte, workCount)
 	for i := uint(0); i < uint(workCount); i++ {
 		encodeWork[i] = make([]byte, bufferBytes)
 	}
 	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
-	defer free(encodeWorkPtr)
+	defer freeAll(encodeWorkPtr)
 
 	err = leopardResultToErr(leoEncode(
 		bufferBytes,
@@ -89,7 +90,7 @@ func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 		return
 	}
 	origCount := uint32(len(orig))
-	recoveryCount := origCount / 2
+	recoveryCount := origCount
 	decodeWorkCount := leoDecodeWorkCount(origCount, recoveryCount)
 
 	decodeWork = make([][]byte, decodeWorkCount)
@@ -97,12 +98,12 @@ func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 		decodeWork[i] = make([]byte, bufferBytes)
 	}
 	decodeWorkPtr := copyToCmallocedPtrs(decodeWork)
-	defer free(decodeWorkPtr)
+	defer freeAll(decodeWorkPtr)
 	origDataPtr := copyToCmallocedPtrs(orig)
-	defer free(origDataPtr)
+	defer freeAll(origDataPtr)
 
 	recoveryDataPtr := copyToCmallocedPtrs(recovery)
-	defer free(recoveryDataPtr)
+	defer freeAll(recoveryDataPtr)
 
 	err = leopardResultToErr(leoDecode(
 		bufferBytes,
@@ -142,15 +143,18 @@ func extract(data [][]byte) (origCount uint32, bufferBytes uint64, err error) {
 func copyToCmallocedPtrs(data [][]byte) []unsafe.Pointer {
 	res := make([]unsafe.Pointer, len(data))
 	for i, d := range data {
-		if len(d) > 0 {
-			cBuf := C.CBytes(d)
-			res[i] = unsafe.Pointer(cBuf)
-		} else {
-			// keep this nil as leopard uses this internally
-			res[i] = nil
-		}
+		res[i] = copyByteBuffer(d)
 	}
 	return res
+}
+
+func copyByteBuffer(d []byte) unsafe.Pointer {
+	if len(d) > 0 {
+		return C.CBytes(d)
+	} else {
+		// keep this nil as leopard uses this internally
+		return nil
+	}
 }
 
 func toGoByte(ps []unsafe.Pointer, res [][]byte, bufferBytes int) {
@@ -167,15 +171,16 @@ func toGoByte(ps []unsafe.Pointer, res [][]byte, bufferBytes int) {
 	}
 }
 
-// wrapper around C.free (can also be used in tests)
-func freeAndNilBuf(p unsafe.Pointer) {
-	// if p represents NULL this is a nop:
-	C.free(p)
-	p = nil
+// wrapper around C.freeAll (can also be used in tests)
+func freeAndNil(p unsafe.Pointer) {
+	if p != nil {
+		C.free(p)
+		p = nil
+	}
 }
 
-func free(ps []unsafe.Pointer) {
+func freeAll(ps []unsafe.Pointer) {
 	for _, p := range ps {
-		freeAndNilBuf(p)
+		freeAndNil(p)
 	}
 }

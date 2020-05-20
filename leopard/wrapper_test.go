@@ -26,7 +26,9 @@ func TestEncodeSimple(t *testing.T) {
 	encoded, err := Encode(originalData)
 	assert.NoError(t, err)
 	assert.NotNil(t, encoded)
-	assert.Equal(t, originalCount, len(encoded))
+	// due to leo_encode_work_count this has to be 2*origCount
+	// see: https://github.com/catid/leopard/issues/15#issuecomment-631391392
+	assert.Equal(t, 2*originalCount, len(encoded))
 }
 
 func TestEncodeDecodeRoundtripSimple(t *testing.T) {
@@ -41,10 +43,10 @@ func TestEncodeDecodeRoundtripSimple(t *testing.T) {
 	}
 	encoded, err := Encode(originalData)
 	require.NoError(t, err)
-	assert.EqualValues(t, len(encoded), originalCount)
+	assert.EqualValues(t, 2*originalCount, len(encoded))
 
-	// lose half the orig data:
-	for i := 0; i < originalCount/2; i++ {
+	// lose all orig data:
+	for i := 0; i < originalCount; i++ {
 		originalData[i] = nil
 	}
 
@@ -70,8 +72,8 @@ func TestMemRoundTrip(t *testing.T) {
 	}
 	ptrs := mockScopeFunc1(originalData)
 	result := mockScopeFunc2(originalCount, ptrs, bufferBytes)
-	// free pointers and see if we run into any problem:
-	free(ptrs)
+	// freeAll pointers and see if we run into any problem:
+	freeAll(ptrs)
 	assert.EqualValues(t, originalData, result)
 }
 

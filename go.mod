@@ -1,4 +1,4 @@
-module github.com/liamsi/go-leopard
+module github.com/lazyledger/go-leopard
 
 go 1.14
 

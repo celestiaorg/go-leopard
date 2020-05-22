@@ -36,7 +36,7 @@ func TestEncodeSimple(t *testing.T) {
 	assert.Equal(t, originalCount, len(encoded))
 }
 
-func TestEncodeDecodeRoundtripSimple(t *testing.T) {
+func TestEncodeRecoverRoundtripSimple(t *testing.T) {
 	const originalCount = 1024
 	const bufferBytes = 6400
 	originalData := make([][]byte, originalCount)
@@ -55,7 +55,7 @@ func TestEncodeDecodeRoundtripSimple(t *testing.T) {
 
 	dec, err := Recover(originalData, encoded)
 	require.NoError(t, err)
-	assert.Equal(t, 2*originalCount, len(dec))
+	assert.Equal(t, originalCount, len(dec))
 	for i := 0; i < originalCount; i++ {
 		if originalData[i] == nil {
 			// see if we recovered that missing data:

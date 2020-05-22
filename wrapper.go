@@ -95,12 +95,20 @@ func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 	return encodeWork[:origCount], nil
 }
 
-// Decode takes in what is left from the original data and the extended recovery data
-// and recovers missing data (upto half of the total data can be missing).
-// Missing data (either original or recovery) has to be nil.
-func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
+// Recover takes in what is left from the original data and the extended recovery data
+// and recovers missing original data (upto half of the total data can be missing).
+// Missing data (either original or recovery) has to be nil when passed in.
+func Recover(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
+	if len(orig) != len(recovery) {
+		err = fmt.Errorf(
+			"recovery is only implemented for len(orig)==len(recovery), got: %v != %v",
+			len(orig),
+			len(recovery),
+		)
+		return
+	}
 	_, bufferBytesRecov, _ := extractCounts(recovery)
-	_, bufferBytesOrig, _ := extractCounts(recovery)
+	_, bufferBytesOrig, _ := extractCounts(orig)
 	bufferBytes := max(bufferBytesRecov, bufferBytesOrig)
 	if bufferBytes == 0 {
 		err = errAllBuffersEmpty
@@ -135,6 +143,43 @@ func Decode(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 	}
 
 	toGoByte(decodeWorkPtr, decodeWork, int(bufferBytes))
+	// leopard only recovers missing original chunks:
+	decodeWork = decodeWork[:len(decodeWork)/2]
+	return
+}
+
+// Decode takes in what is left from the original data and the extended recovery data
+// and recovers missing original or missing recovery data
+// (upto half of the total data can be missing).
+// Note the only difference to Recover is that Decode also recovers missing parity shares.
+// On success, it returns (orig || recovery) with all data recovered.
+// Missing data (either original or recovery) has to be nil when passed in.
+func Decode(orig, recovery [][]byte) (decoded [][]byte, err error) {
+	decodedOrig, err := Recover(orig, recovery)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(orig); i++ {
+		if orig[i] != nil {
+			decodedOrig[i] = orig[i]
+		}
+	}
+	lostRecoveryShares := false
+	for i := 0; i < len(recovery); i++ {
+		if recovery[i] == nil {
+			lostRecoveryShares = true
+			break
+		}
+	}
+	if lostRecoveryShares {
+		encoded, err := Encode(decodedOrig)
+		if err != nil {
+			return nil, err
+		}
+		decoded = append(decodedOrig, encoded...)
+	} else {
+		decoded = append(decodedOrig, recovery...)
+	}
 	return
 }
 

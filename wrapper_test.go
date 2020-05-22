@@ -52,7 +52,7 @@ func TestEncodeDecodeRoundtripSimple(t *testing.T) {
 		originalData[i] = nil
 	}
 
-	dec, err := Decode(originalData, encoded)
+	dec, err := Recover(originalData, encoded)
 	require.NoError(t, err)
 	assert.Equal(t, 2*originalCount, len(dec))
 	for i := 0; i < originalCount; i++ {
@@ -63,7 +63,7 @@ func TestEncodeDecodeRoundtripSimple(t *testing.T) {
 	}
 }
 
-func TestEncodeDecodeRoundtrip(t *testing.T) {
+func TestEncodeRecoverRoundtrip(t *testing.T) {
 	const originalCount = 32768
 	const lossCount = 32768 // lose exactly originalCount of total data
 	const bufferBytes = 640
@@ -91,12 +91,59 @@ func TestEncodeDecodeRoundtrip(t *testing.T) {
 		}
 	}
 
-	dec, err := Decode(originalData, encoded)
+	dec, err := Recover(originalData, encoded)
 	require.NoError(t, err)
 	for i := 0; i < originalCount; i++ {
 		if originalData[i] == nil {
 			// see if we recovered that missing data:
 			assert.Equal(t, true, checkBytes(dec[i]))
+		}
+	}
+}
+
+func TestEncodeDecodeRoundtrip(t *testing.T) {
+	const originalCount = 32768
+	const lossCount = 32768 // lose exactly originalCount of total data
+	const bufferBytes = 64
+
+	originalData := make([][]byte, originalCount)
+	for i := 0; i < originalCount; i++ {
+		originalData[i] = make([]byte, bufferBytes)
+		checkedRandBytes(originalData[i])
+	}
+	origCopy := make([][]byte, originalCount)
+	copy(origCopy, originalData)
+
+	encoded, err := Encode(originalData)
+	require.NoError(t, err)
+
+	origEnc := make([][]byte, len(encoded))
+	copy(origEnc, encoded)
+
+	// lose lossCount data (original or parity):
+	lostIdxs := map[int32]struct{}{}
+	for len(lostIdxs) < lossCount {
+		loseIdx := rand.Int31n(lossCount + originalCount)
+		if _, alreadyLost := lostIdxs[loseIdx]; !alreadyLost {
+			if loseIdx < originalCount {
+				originalData[loseIdx] = nil
+			} else {
+				encoded[loseIdx%originalCount] = nil
+			}
+			lostIdxs[loseIdx] = struct{}{}
+		}
+	}
+
+	dec, err := Decode(originalData, encoded)
+	require.NoError(t, err)
+
+	// verify we recovered all lost data:
+	for i := 0; i < len(dec); i++ {
+		if i < originalCount {
+			assert.Equal(t, origCopy[i], dec[i])
+		}
+		if i >= originalCount {
+			assert.Equal(t, origEnc[i%originalCount], dec[i])
 		}
 	}
 }
@@ -131,7 +178,7 @@ func TestEncodeDecodeRoundtripRandomized(t *testing.T) {
 			}
 		}
 
-		dec, err := Decode(originalData, encoded)
+		dec, err := Recover(originalData, encoded)
 		require.NoError(t, err)
 		for i := 0; i < originalCount; i++ {
 			if originalData[i] == nil {

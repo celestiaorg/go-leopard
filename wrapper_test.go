@@ -55,7 +55,6 @@ func TestEncodeRecoverRoundtripSimple(t *testing.T) {
 
 	dec, err := Recover(originalData, encoded)
 	require.NoError(t, err)
-	assert.Equal(t, originalCount, len(dec))
 	for i := 0; i < originalCount; i++ {
 		if originalData[i] == nil {
 			// see if we recovered that missing data:
@@ -144,6 +143,53 @@ func TestEncodeDecodeRoundtrip(t *testing.T) {
 			assert.Equal(t, origCopy[i], dec[i])
 		}
 		if i >= originalCount {
+			assert.Equal(t, origEnc[i%originalCount], dec[i])
+		}
+	}
+}
+
+func TestFF8EncodeRecoverRoundtrip(t *testing.T) {
+	const originalCount = 128
+	const lossCount = 128 // lose exactly originalCount of total data
+	const bufferBytes = 256
+
+	originalData := make([][]byte, originalCount)
+	for i := 0; i < originalCount; i++ {
+		originalData[i] = make([]byte, bufferBytes)
+		checkedRandBytes(originalData[i])
+	}
+	origCopy := make([][]byte, originalCount)
+	copy(origCopy, originalData)
+
+	encoded, err := Encode(originalData)
+	require.NoError(t, err)
+
+	origEnc := make([][]byte, len(encoded))
+	copy(origEnc, encoded)
+
+	// lose lossCount data (original or parity):
+	lostIdxs := map[int32]struct{}{}
+	for len(lostIdxs) < lossCount {
+		loseIdx := rand.Int31n(lossCount + originalCount)
+		if _, alreadyLost := lostIdxs[loseIdx]; !alreadyLost {
+			if loseIdx < originalCount {
+				originalData[loseIdx] = nil
+			} else {
+				encoded[loseIdx%originalCount] = nil
+			}
+			lostIdxs[loseIdx] = struct{}{}
+		}
+	}
+
+	dec, err := Recover(originalData, encoded)
+	require.NoError(t, err)
+
+	// verify we recovered all lost data (original or parity):
+	for i := 0; i < len(dec); i++ {
+		if i < originalCount && originalData[i] == nil {
+			assert.Equal(t, origCopy[i], dec[i])
+		}
+		if i >= originalCount && encoded[i%originalCount] == nil {
 			assert.Equal(t, origEnc[i%originalCount], dec[i])
 		}
 	}

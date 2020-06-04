@@ -144,7 +144,9 @@ func Recover(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 
 	toGoByte(decodeWorkPtr, decodeWork, int(bufferBytes))
 	// leopard only recovers missing original chunks:
-	decodeWork = decodeWork[:len(decodeWork)/2]
+	// decodeWork = decodeWork[:len(decodeWork)/2]
+	// modified fork at:
+	// https://github.com/Liamsi/leopard/tree/recover_parity_chunks_too
 	return
 }
 
@@ -155,31 +157,21 @@ func Recover(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 // On success, it returns (orig || recovery) with all data recovered.
 // Missing data (either original or recovery) has to be nil when passed in.
 func Decode(orig, recovery [][]byte) (decoded [][]byte, err error) {
-	decodedOrig, err := Recover(orig, recovery)
+	decoded, err = Recover(orig, recovery)
 	if err != nil {
 		return nil, err
 	}
 	for i := 0; i < len(orig); i++ {
 		if orig[i] != nil {
-			decodedOrig[i] = orig[i]
+			decoded[i] = orig[i]
 		}
 	}
-	lostRecoveryShares := false
 	for i := 0; i < len(recovery); i++ {
-		if recovery[i] == nil {
-			lostRecoveryShares = true
-			break
+		if recovery[i] != nil {
+			decoded[i+len(orig)] = recovery[i]
 		}
 	}
-	if lostRecoveryShares {
-		encoded, err := Encode(decodedOrig)
-		if err != nil {
-			return nil, err
-		}
-		decoded = append(decodedOrig, encoded...)
-	} else {
-		decoded = append(decodedOrig, recovery...)
-	}
+
 	return
 }
 

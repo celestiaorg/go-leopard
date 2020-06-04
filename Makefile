@@ -5,7 +5,7 @@ test: install-cleo
 # only necessary if you need to re-generate the c-go bindings
 # Note: deletes all previously generated c-go bindings and
 # any build
-re-generate: clean
+re-generate: clean_generated
 	c-for-go --ccincl leopard.yml
 
 # init leopard submodule and build C library
@@ -20,10 +20,12 @@ install-cleo: build-cleo
 	cp leopard/build/liblibleopard.a $(INSTALL_DIR)/
 
 # clean generated files and build artifacts
-clean:
+clean_generated:
 	rm -f leopard/cgo_helpers.go leopard/cgo_helpers.h leopard/cgo_helpers.c
 	rm -f leopard/const.go leopard/doc.go leopard/types.go
 	rm -f leopard/leopard.go
+
+clean_build:
 	rm -rf leopard/build
 
 uninstall-cleo:

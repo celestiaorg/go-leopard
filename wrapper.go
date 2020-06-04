@@ -144,7 +144,9 @@ func Recover(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 
 	toGoByte(decodeWorkPtr, decodeWork, int(bufferBytes))
 	// leopard only recovers missing original chunks:
-	decodeWork = decodeWork[:len(decodeWork)/2]
+	// decodeWork = decodeWork[:len(decodeWork)/2]
+	// modified fork at:
+	// https://github.com/Liamsi/leopard/tree/recover_parity_chunks_too
 	return
 }
 

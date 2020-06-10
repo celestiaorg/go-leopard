@@ -1,3 +1,4 @@
 [submodule "leopard/leopard"]
 	path = leopard/leopard
 	url = https://github.com/Liamsi/leopard.git
+    branch = recover_parity_chunks_too

@@ -1,4 +1,0 @@
-[submodule "leopard/leopard"]
-	path = leopard/leopard
-	url = https://github.com/lazyledger/leopard.git
-	branch = master

@@ -8,70 +8,24 @@ import (
 	"golang.org/x/sys/cpu"
 )
 
-func init() {
-	_ = cpu.X86.HasAVX2
-	_ = cpu.X86.HasSSE3
-}
-
-type LeopardResult int32
-
-const (
-	LeopardSuccess        LeopardResult = 0
-	LeopardNeedmoredata   LeopardResult = -1
-	LeopardToomuchdata    LeopardResult = -2
-	LeopardInvalidsize    LeopardResult = -3
-	LeopardInvalidcounts  LeopardResult = -4
-	LeopardInvalidinput   LeopardResult = -5
-	LeopardPlatform       LeopardResult = -6
-	LeopardCallinitialize LeopardResult = -7
-)
-
 var (
-	ErrNeedMoreData  = errors.New("not enough recovery data received")
-	ErrTooMuchData   = errors.New("buffer counts are too high")
-	ErrInvalidSize   = errors.New("buffer size must be a multiple of 64 bytes")
-	ErrInvalidCounts = errors.New("invalid counts provided")
-	ErrInvalidInput  = errors.New("a function parameter was invalid")
-	ErrPlatform      = errors.New("platform is unsupported")
-
-	ErrCallInitialize = errors.New("call Init() first")
-
+	ErrNeedMoreData    = errors.New("not enough recovery data received")
+	ErrTooMuchData     = errors.New("buffer counts are too high")
+	ErrInvalidSize     = errors.New("buffer size must be a multiple of 64 bytes")
+	ErrInvalidCounts   = errors.New("invalid counts provided")
+	ErrInvalidInput    = errors.New("a function parameter was invalid")
+	ErrPlatform        = errors.New("platform is unsupported")
+	ErrCallInitialize  = errors.New("call Init() first")
 	errAllBuffersEmpty = errors.New("all buffers are empty")
 )
 
 const version = 2
 
-func init() {
-	if err := Init(); err != nil {
-		panic(fmt.Sprintf("Unexpected error while initializing leopard %v", err))
-	}
-}
-
-func leopardResultToErr(errCode LeopardResult) error {
-	switch errCode {
-	case LeopardSuccess:
-		return nil
-	case LeopardNeedmoredata:
-		return ErrNeedMoreData
-	case LeopardToomuchdata:
-		return ErrTooMuchData
-	case LeopardInvalidsize:
-		return ErrInvalidSize
-	case LeopardInvalidcounts:
-		return ErrInvalidCounts
-	case LeopardInvalidinput:
-		return ErrInvalidInput
-	case LeopardPlatform:
-		return ErrPlatform
-	case LeopardCallinitialize:
-		return ErrCallInitialize
-	default:
-		panic("unexpected Leopard return code")
-	}
-}
-
 func Init() error {
-	return leopardResultToErr(LeopardResult(LeoInit(version)))
+	_ = cpu.X86.HasAVX2
+	_ = cpu.X86.HasSSE3
+
+	return LeoInit(version)
 }
 
 // Encode takes an slice of equally sized byte slices and computes len(data) parity shares.

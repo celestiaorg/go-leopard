@@ -53,20 +53,19 @@ func Encode(data [][]byte) ([][]byte, error) {
 	workCount := getEncodeWorkCount(origCount, recoveryCount)
 
 	encodeWork := make([][]byte, workCount)
-	for i := uint(0); i < uint(workCount); i++ {
+	for i := uint32(0); i < workCount; i++ {
 		encodeWork[i] = make([]byte, bufferBytes)
 	}
 
-	err = LeoEncode(
+	err = leoEncode(
 		bufferBytes,
-		origCount,
-		recoveryCount,
-		workCount,
 		data,
-		encodeWork)
+		encodeWork,
+	)
 	if err != nil {
 		return nil, err
 	}
+
 	// XXX: We only return half the data here as the other half is all zeroes
 	// and superfluous.
 	// For details see: https://github.com/catid/leopard/issues/15#issuecomment-631391392
@@ -97,18 +96,16 @@ func Recover(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 	decodeWorkCount := getDecodeWorkCount(origCount, recoveryCount)
 
 	decodeWork = make([][]byte, decodeWorkCount)
-	for i := uint(0); i < uint(decodeWorkCount); i++ {
+	for i := uint32(0); i < decodeWorkCount; i++ {
 		decodeWork[i] = make([]byte, bufferBytes)
 	}
 
-	err = LeoDecode(
+	err = leoDecode(
 		bufferBytes,
-		origCount,
-		recoveryCount,
-		decodeWorkCount,
 		orig,
 		recovery,
-		decodeWork)
+		decodeWork,
+	)
 	if err != nil {
 		return
 	}
@@ -217,4 +214,119 @@ func getDecodeWorkCount(originalCount uint32, recoveryCount uint32) uint32 {
 	m := nextPowerOf2(recoveryCount)
 	n := nextPowerOf2(m + originalCount)
 	return n
+}
+
+func leoEncode(
+	bufferBytes uint64, // Number of bytes in each data buffer
+	originalData [][]byte, // Array of pointers to original data buffers
+	workData [][]byte, // Array of work buffers
+) error {
+	originalCount := uint32(len(originalData))
+	workCount := uint32(len(workData))
+
+	if bufferBytes == 0 || bufferBytes%64 != 0 {
+		return ErrInvalidSize
+	}
+	if originalData == nil || workData == nil {
+		return ErrInvalidInput
+	}
+	if !isInitialized {
+		return ErrCallInitialize
+	}
+
+	// Handle k = m = 1 case
+	if originalCount == 1 {
+		for i := uint32(0); i < originalCount; i++ {
+			copy(workData[i], originalData[i])
+		}
+		return nil
+	}
+
+	m := nextPowerOf2(originalCount)
+	n := nextPowerOf2(m + originalCount)
+
+	if workCount != m*2 {
+		return ErrInvalidCounts
+	}
+
+	if n <= kOrder {
+		reedSolomonEncode(
+			bufferBytes,
+			originalData,
+			workData,
+		)
+	} else {
+		return ErrTooMuchData
+	}
+
+	return nil
+}
+
+func leoDecode(
+	bufferBytes uint64, // Number of bytes in each data buffer
+	originalData [][]byte, // Array of original data buffers
+	recoveryData [][]byte, // Array of recovery data buffers
+	workData [][]byte, // Array of work data buffers
+) error {
+	originalCount := uint32(len(originalData))
+	recoveryCount := uint32(len(recoveryData))
+	workCount := uint32(len(workData))
+
+	if bufferBytes == 0 || bufferBytes%64 != 0 {
+		return ErrInvalidSize
+	}
+	if recoveryCount == 0 || recoveryCount > originalCount {
+		return ErrInvalidCounts
+	}
+	if originalData == nil || recoveryData == nil || workData == nil {
+		return ErrInvalidInput
+	}
+	if isInitialized {
+		return ErrCallInitialize
+	}
+
+	// Check if not enough recovery data arrived
+	originalLossCount := uint32(0)
+	for i := uint32(0); i < originalCount; i++ {
+		if originalData[i] == nil {
+			originalLossCount++
+		}
+	}
+	recoveryGotCount := uint32(0)
+	recoveryGot_i := uint32(0)
+	for i := uint32(0); i < recoveryCount; i++ {
+		if recoveryData[i] != nil {
+			recoveryGotCount++
+			recoveryGot_i = i
+		}
+	}
+	if recoveryGotCount < originalLossCount {
+		return ErrNeedMoreData
+	}
+
+	// Handle k = m = 1 case
+	if originalCount == 1 {
+		copy(workData[0], recoveryData[recoveryGot_i])
+		return nil
+	}
+
+	m := nextPowerOf2(recoveryCount)
+	n := nextPowerOf2(m + originalCount)
+
+	if workCount != n {
+		return ErrInvalidCounts
+	}
+
+	if n <= kOrder {
+		reedSolomonDecode(
+			bufferBytes,
+			originalData,
+			recoveryData,
+			workData,
+		)
+	} else {
+		return ErrTooMuchData
+	}
+
+	return nil
 }

@@ -3,12 +3,13 @@ package leopard
 import (
 	"errors"
 	"fmt"
-	"unsafe"
 
 	"golang.org/x/sys/cpu"
 )
 
 var (
+	ErrCpuNoSSE3       = errors.New("CPU does not support SSE3")
+	ErrCpuNoAVX2       = errors.New("CPU does not support AVX2")
 	ErrNeedMoreData    = errors.New("not enough recovery data received")
 	ErrTooMuchData     = errors.New("buffer counts are too high")
 	ErrInvalidSize     = errors.New("buffer size must be a multiple of 64 bytes")
@@ -19,45 +20,53 @@ var (
 	errAllBuffersEmpty = errors.New("all buffers are empty")
 )
 
-const version = 2
+// Tracks whether Leopard is initialized
+var isInitialized = false
 
+// Init initializes the codec. Must be called before any other functions.
 func Init() error {
-	_ = cpu.X86.HasAVX2
-	_ = cpu.X86.HasSSE3
+	if isInitialized {
+		return nil
+	}
 
-	return LeoInit(version)
+	if !cpu.X86.HasSSE3 {
+		return ErrCpuNoSSE3
+	}
+	if !cpu.X86.HasAVX2 {
+		return ErrCpuNoAVX2
+	}
+
+	// TODO init FF16
+
+	isInitialized = true
+	return nil
 }
 
 // Encode takes an slice of equally sized byte slices and computes len(data) parity shares.
 // This means you can lose half of (data || encodeWork) and still recover the data.
-func Encode(data [][]byte) (encodeWork [][]byte, err error) {
+func Encode(data [][]byte) ([][]byte, error) {
 	origCount, bufferBytes, err := extractCounts(data)
 	if err != nil {
 		return nil, err
 	}
 	recoveryCount := origCount
-	workCount := LeoEncodeWorkCount(origCount, recoveryCount)
-	origDataPtrs := copyToCmallocedPtrs(data)
-	defer freeAll(origDataPtrs)
+	workCount := getEncodeWorkCount(origCount, recoveryCount)
 
-	encodeWork = make([][]byte, workCount)
+	encodeWork := make([][]byte, workCount)
 	for i := uint(0); i < uint(workCount); i++ {
 		encodeWork[i] = make([]byte, bufferBytes)
 	}
-	encodeWorkPtr := copyToCmallocedPtrs(encodeWork)
-	defer freeAll(encodeWorkPtr)
 
-	err = leopardResultToErr(LeoEncode(
+	err = LeoEncode(
 		bufferBytes,
 		origCount,
 		recoveryCount,
 		workCount,
-		origDataPtrs,
-		encodeWorkPtr))
+		data,
+		encodeWork)
 	if err != nil {
-		return
+		return nil, err
 	}
-	toGoByte(encodeWorkPtr, encodeWork, int(bufferBytes))
 	// XXX: We only return half the data here as the other half is all zeroes
 	// and superfluous.
 	// For details see: https://github.com/catid/leopard/issues/15#issuecomment-631391392
@@ -85,33 +94,25 @@ func Recover(orig, recovery [][]byte) (decodeWork [][]byte, err error) {
 	}
 	origCount := uint32(len(orig))
 	recoveryCount := origCount
-	decodeWorkCount := LeoDecodeWorkCount(origCount, recoveryCount)
+	decodeWorkCount := getDecodeWorkCount(origCount, recoveryCount)
 
 	decodeWork = make([][]byte, decodeWorkCount)
 	for i := uint(0); i < uint(decodeWorkCount); i++ {
 		decodeWork[i] = make([]byte, bufferBytes)
 	}
-	decodeWorkPtr := copyToCmallocedPtrs(decodeWork)
-	defer freeAll(decodeWorkPtr)
-	origDataPtr := copyToCmallocedPtrs(orig)
-	defer freeAll(origDataPtr)
 
-	recoveryDataPtr := copyToCmallocedPtrs(recovery)
-	defer freeAll(recoveryDataPtr)
-
-	err = leopardResultToErr(LeoDecode(
+	err = LeoDecode(
 		bufferBytes,
 		origCount,
 		recoveryCount,
 		decodeWorkCount,
-		origDataPtr,
-		recoveryDataPtr,
-		decodeWorkPtr))
+		orig,
+		recovery,
+		decodeWork)
 	if err != nil {
 		return
 	}
 
-	toGoByte(decodeWorkPtr, decodeWork, int(bufferBytes))
 	// leopard only recovers missing original chunks:
 	// decodeWork = decodeWork[:len(decodeWork)/2]
 	// modified fork at:
@@ -170,63 +171,50 @@ func extractCounts(data [][]byte) (dataLen uint32, bufferBytes uint64, err error
 	return
 }
 
-// LeoInit function as declared in leopard/leopard.h:105
-func LeoInit(version int32) int32 {
-	cversion, _ := (C.int)(version), cgoAllocsUnknown
-	__ret := C.leo_init_(cversion)
-	__v := (int32)(__ret)
-	return __v
+// nextPowerOf2 returns the next lowest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextPowerOf2(v uint32) uint32 {
+	if v == 1 {
+		return 1
+	}
+	// keep track of the input
+	i := v
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// check if the input was the next highest power
+	if i == v {
+		return v
+	}
+
+	// return the next lowest power
+	return v / 2
 }
 
-// LeoResultString function as declared in leopard/leopard.h:127
-func LeoResultString(result Leopardresult) string {
-	cresult, _ := (C.LeopardResult)(result), cgoAllocsUnknown
-	__ret := C.leo_result_string(cresult)
-	__v := packPCharString(__ret)
-	return __v
+func getEncodeWorkCount(originalCount uint32, recoveryCount uint32) uint32 {
+	if originalCount == 1 {
+		return recoveryCount
+	}
+	if recoveryCount == 1 {
+		return 1
+	}
+
+	return nextPowerOf2(recoveryCount) * 2
 }
 
-// LeoEncodeWorkCount function as declared in leopard/leopard.h:143
-func LeoEncodeWorkCount(originalCount uint32, recoveryCount uint32) uint32 {
-	coriginalCount, _ := (C.uint)(originalCount), cgoAllocsUnknown
-	crecoveryCount, _ := (C.uint)(recoveryCount), cgoAllocsUnknown
-	__ret := C.leo_encode_work_count(coriginalCount, crecoveryCount)
-	__v := (uint32)(__ret)
-	return __v
-}
+func getDecodeWorkCount(originalCount uint32, recoveryCount uint32) uint32 {
+	if originalCount == 1 || recoveryCount == 1 {
+		return originalCount
+	}
 
-// LeoEncode function as declared in leopard/leopard.h:180
-func LeoEncode(bufferBytes uint64, originalCount uint32, recoveryCount uint32, workCount uint32, originalData []unsafe.Pointer, workData []unsafe.Pointer) Leopardresult {
-	cbufferBytes, _ := (C.uint64_t)(bufferBytes), cgoAllocsUnknown
-	coriginalCount, _ := (C.uint)(originalCount), cgoAllocsUnknown
-	crecoveryCount, _ := (C.uint)(recoveryCount), cgoAllocsUnknown
-	cworkCount, _ := (C.uint)(workCount), cgoAllocsUnknown
-	coriginalData, _ := (*unsafe.Pointer)(unsafe.Pointer((*sliceHeader)(unsafe.Pointer(&originalData)).Data)), cgoAllocsUnknown
-	cworkData, _ := (*unsafe.Pointer)(unsafe.Pointer((*sliceHeader)(unsafe.Pointer(&workData)).Data)), cgoAllocsUnknown
-	__ret := C.leo_encode(cbufferBytes, coriginalCount, crecoveryCount, cworkCount, coriginalData, cworkData)
-	__v := (Leopardresult)(__ret)
-	return __v
-}
-
-// LeoDecodeWorkCount function as declared in leopard/leopard.h:202
-func LeoDecodeWorkCount(originalCount uint32, recoveryCount uint32) uint32 {
-	coriginalCount, _ := (C.uint)(originalCount), cgoAllocsUnknown
-	crecoveryCount, _ := (C.uint)(recoveryCount), cgoAllocsUnknown
-	__ret := C.leo_decode_work_count(coriginalCount, crecoveryCount)
-	__v := (uint32)(__ret)
-	return __v
-}
-
-// LeoDecode function as declared in leopard/leopard.h:227
-func LeoDecode(bufferBytes uint64, originalCount uint32, recoveryCount uint32, workCount uint32, originalData []unsafe.Pointer, recoveryData []unsafe.Pointer, workData []unsafe.Pointer) Leopardresult {
-	cbufferBytes, _ := (C.uint64_t)(bufferBytes), cgoAllocsUnknown
-	coriginalCount, _ := (C.uint)(originalCount), cgoAllocsUnknown
-	crecoveryCount, _ := (C.uint)(recoveryCount), cgoAllocsUnknown
-	cworkCount, _ := (C.uint)(workCount), cgoAllocsUnknown
-	coriginalData, _ := (*unsafe.Pointer)(unsafe.Pointer((*sliceHeader)(unsafe.Pointer(&originalData)).Data)), cgoAllocsUnknown
-	crecoveryData, _ := (*unsafe.Pointer)(unsafe.Pointer((*sliceHeader)(unsafe.Pointer(&recoveryData)).Data)), cgoAllocsUnknown
-	cworkData, _ := (*unsafe.Pointer)(unsafe.Pointer((*sliceHeader)(unsafe.Pointer(&workData)).Data)), cgoAllocsUnknown
-	__ret := C.leo_decode(cbufferBytes, coriginalCount, crecoveryCount, cworkCount, coriginalData, crecoveryData, cworkData)
-	__v := (Leopardresult)(__ret)
-	return __v
+	m := nextPowerOf2(recoveryCount)
+	n := nextPowerOf2(m + originalCount)
+	return n
 }

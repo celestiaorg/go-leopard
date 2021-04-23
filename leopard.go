@@ -262,6 +262,8 @@ func leoEncode(
 	return nil
 }
 
+func reedSolomonEncode(bufferBytes uint64, originalData [][]byte, workData [][]byte) {}
+
 func leoDecode(
 	bufferBytes uint64, // Number of bytes in each data buffer
 	originalData [][]byte, // Array of original data buffers
@@ -329,4 +331,7 @@ func leoDecode(
 	}
 
 	return nil
+}
+
+func reedSolomonDecode(bufferBytes uint64, originalData [][]byte, recoveryData [][]byte, workData [][]byte) {
 }

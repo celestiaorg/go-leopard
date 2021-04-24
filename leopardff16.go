@@ -483,84 +483,80 @@ static void IFFT_DIT4(
 
         return;
 }
-
+*/
 
 // Unrolled IFFT for encoder
-static void IFFT_DIT_Encoder(
-    const uint64_t bytes,
-    const void* const* data,
-    const unsigned m_truncated,
-    void** work,
-    const unsigned m,
-    const ffe_t* skewLUT)
-{
-    // I tried rolling the memcpy/memset into the first layer of the FFT and
-    // found that it only yields a 4% performance improvement, which is not
-    // worth the extra complexity.
-    for (int i = 0; i < (int)m_truncated; ++i)
-        memcpy(work[i], data[i], bytes);
-    for (int i = m_truncated; i < (int)m; ++i)
-        memset(work[i], 0, bytes);
+func ifft_DIT_Encoder(
+	bytes uint64,
+	data [][]byte,
+	work [][]byte,
+	skewLUT []ffe_t,
+) {
+	m := uint32(len(data))
 
-    // I tried splitting up the first few layers into L3-cache sized blocks but
-    // found that it only provides about 5% performance boost, which is not
-    // worth the extra complexity.
+	// I tried rolling the memcpy/memset into the first layer of the FFT and
+	// found that it only yields a 4% performance improvement, which is not
+	// worth the extra complexity.
+	for i := uint32(0); i < m; i++ {
+		copy(work[i], data[i])
+	}
+	// I tried splitting up the first few layers into L3-cache sized blocks but
+	// found that it only provides about 5% performance boost, which is not
+	// worth the extra complexity.
 
-    // Decimation in time: Unroll 2 layers at a time
-    unsigned dist = 1, dist4 = 4;
-    for (; dist4 <= m; dist = dist4, dist4 <<= 2)
-    {
-        // For each set of dist*4 elements:
-        for (int r = 0; r < (int)m_truncated; r += dist4)
-        {
-            const unsigned i_end = r + dist;
-            const ffe_t log_m01 = skewLUT[i_end];
-            const ffe_t log_m02 = skewLUT[i_end + dist];
-            const ffe_t log_m23 = skewLUT[i_end + dist * 2];
+	// Decimation in time: Unroll 2 layers at a time
+	dist := uint32(1)
+	dist4 := uint32(4)
+	for ; dist4 <= m; dist4 <<= 2 {
+		// For each set of dist*4 elements:
+		for r := uint32(0); r < m; r += dist4 {
+			i_end := r + dist
+			log_m01 := skewLUT[i_end]
+			log_m02 := skewLUT[i_end+dist]
+			log_m23 := skewLUT[i_end+dist*2]
 
-            // For each set of dist elements:
-            for (int i = r; i < (int)i_end; ++i)
-            {
-                IFFT_DIT4(
-                    bytes,
-                    work + i,
-                    dist,
-                    log_m01,
-                    log_m23,
-                    log_m02);
-            }
-        }
+			// For each set of dist elements:
+			for i := r; i < uint32(i_end); i++ {
+				ifft_DIT4(
+					bytes,
+					work[i:],
+					dist,
+					log_m01,
+					log_m23,
+					log_m02,
+				)
+			}
+		}
 
-        // I tried alternating sweeps left->right and right->left to reduce cache misses.
-        // It provides about 1% performance boost when done for both FFT and IFFT, so it
-        // does not seem to be worth the extra complexity.
-    }
+		// I tried alternating sweeps left->right and right->left to reduce cache misses.
+		// It provides about 1% performance boost when done for both FFT and IFFT, so it
+		// does not seem to be worth the extra complexity.
 
-    // If there is one layer left:
-    if (dist < m)
-    {
-        // Assuming that dist = m / 2
-        LEO_DEBUG_ASSERT(dist * 2 == m);
+		dist = dist4
+	}
 
-        const ffe_t log_m = skewLUT[dist];
+	// If there is one layer left:
+	if dist < m {
+		// Assuming that dist = m / 2
 
-        if (log_m == kModulus)
-            VectorXOR_Threads(bytes, dist, work + dist, work);
-        else
-        {
-            for (int i = 0; i < (int)dist; ++i)
-            {
-                IFFT_DIT2(
-                    work[i],
-                    work[i + dist],
-                    log_m,
-                    bytes);
-            }
-        }
-    }
+		log_m := skewLUT[dist]
+
+		if log_m == kModulus {
+			VectorXOR_Threads(bytes, dist, work[dist:], work)
+		} else {
+			for i := uint32(0); i < dist; i++ {
+				ifft_DIT2(
+					work[i],
+					work[i+dist],
+					log_m,
+					bytes,
+				)
+			}
+		}
+	}
 }
 
-
+/*
 // Basic no-frills version for decoder
 static void IFFT_DIT_Decoder(
     const uint64_t bytes,
@@ -842,7 +838,7 @@ func reedSolomonEncode(
 
 	// work <- IFFT(data, m, m)
 
-	skewLUT := fftSkew[originalCount]
+	skewLUT := fftSkew[originalCount:]
 
 	ifft_DIT_Encoder(
 		bufferBytes,

@@ -542,7 +542,7 @@ func ifft_DIT_Encoder(
 		log_m := skewLUT[dist]
 
 		if log_m == kModulus {
-			VectorXOR_Threads(bytes, dist, work[dist:], work)
+			vectorXOR_Threads(bytes, dist, work[dist:], work)
 		} else {
 			for i := uint32(0); i < dist; i++ {
 				ifft_DIT2(

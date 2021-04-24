@@ -35,6 +35,7 @@ func main() {
 		VPXOR(rx, rx, ry)
 		VMOVDQU(x32.Offset(i), rx)
 	}
+	// TODO sizeof
 	Comment("x32 += 4")
 	ADDQ(Imm(unroll), x32)
 	Comment("y32 += 4")

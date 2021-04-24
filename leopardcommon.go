@@ -30,3 +30,15 @@ func xor_mem(
 ) {
 	asm_xor_mem(vx, vy, bytes)
 }
+
+func vectorXOR(bytes uint64, count uint32, x [][]byte, y [][]byte) {
+	// TODO vector optimizations
+	for i := uint32(0); i < count; i++ {
+		xor_mem(x[i], y[i], bytes)
+	}
+}
+
+func vectorXOR_Threads(bytes uint64, count uint32, x [][]byte, y [][]byte) {
+	// TODO goroutines
+	vectorXOR_Threads(bytes, count, x, y)
+}

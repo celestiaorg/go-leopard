@@ -24,10 +24,10 @@ func main() {
 	rx := YMM()
 	ry := YMM()
 
-	Label("L1")
+	Label("loop1")
 	Comment("for bytes >= 128")
 	CMPQ(bytes, Imm(128))
-	JLT(LabelRef("Z1"))
+	JLT(LabelRef("done1"))
 
 	for i := 0; i < unroll; i++ {
 		VMOVDQU(rx, x32.Offset(i))
@@ -42,11 +42,12 @@ func main() {
 	ADDQ(Imm(unroll), y32)
 	Comment("bytes -= 128")
 	SUBQ(Imm(unroll*32), bytes)
+	Label("done1")
 
-	Label("Z1")
+	Label("loop2")
 	Comment("if bytes > 0")
 	CMPQ(bytes, Imm(0))
-	JLE(LabelRef("Z2"))
+	JLE(LabelRef("done2"))
 	for i := 0; i < 2; i++ {
 		VMOVDQU(rx, x32.Offset(i))
 		VMOVDQU(ry, y32.Offset(i))
@@ -54,7 +55,7 @@ func main() {
 		VMOVDQU(x32.Offset(i), rx)
 	}
 
-	Label("Z2")
+	Label("done2")
 	RET()
 
 	////////////////////////////////////////////////////////////////////////////

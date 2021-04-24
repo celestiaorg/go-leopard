@@ -375,6 +375,14 @@ func fftInitialize() {
 //     {0-4, 0'-4', 0-0', 4-4'},
 //     {1-5, 1'-5', 1-1', 5-5'},
 
+func ifft_DIT2(
+	x []byte,
+	y []byte,
+	log_m ffe_t,
+	bytes uint64,
+) {
+}
+
 /*
 // 2-way butterfly
 static void IFFT_DIT2(
@@ -411,8 +419,19 @@ static void IFFT_DIT2(
 
         return;
 }
+*/
 
+func ifft_DIT4(
+	bytes uint64,
+	work [][]byte,
+	dist uint32,
+	log_m01 ffe_t,
+	log_m23 ffe_t,
+	log_m02 ffe_t,
+) {
+}
 
+/*
 // 4-way butterfly
 static void IFFT_DIT4(
     uint64_t bytes,
@@ -601,8 +620,8 @@ func ifft_DIT_Decoder(
 		} else {
 			for i := uint32(0); i < dist; i++ {
 				ifft_DIT2(
-					work[i:],
-					work[i+dist:],
+					work[i],
+					work[i+dist],
 					log_m,
 					bytes,
 				)
@@ -653,6 +672,14 @@ func ifft_DIT_Decoder(
 //     {0-2, 1-3, 0-1, 2-3},
 //     {4-6, 5-7, 4-5, 6-7},
 
+func fft_DIT2(
+	x []byte,
+	y []byte,
+	log_m ffe_t,
+	bytes uint64,
+) {
+}
+
 /*
 // 2-way butterfly
 static void FFT_DIT2(
@@ -690,8 +717,19 @@ static void FFT_DIT2(
 
         return;
 }
+*/
 
+func fft_DIT4(
+	bytes uint64,
+	work [][]byte,
+	dist uint32,
+	log_m01 ffe_t,
+	log_m23 ffe_t,
+	log_m02 ffe_t,
+) {
+}
 
+/*
 // 4-way butterfly
 static void FFT_DIT4(
     uint64_t bytes,
@@ -809,8 +847,8 @@ func fft_DIT(
 				xor_mem(work[r+1], work[r], bytes)
 			} else {
 				fft_DIT2(
-					work[r:],
-					work[r+1:],
+					work[r],
+					work[r+1],
 					log_m,
 					bytes,
 				)
@@ -826,7 +864,7 @@ func reedSolomonEncode(
 	bufferBytes uint64,
 	data [][]byte,
 	work [][]byte,
-) error {
+) {
 	originalCount := uint32(len(data))
 
 	// work <- IFFT(data, m, m)
@@ -848,10 +886,10 @@ func reedSolomonEncode(
 	)
 }
 
-/*
 //------------------------------------------------------------------------------
 // Reed-Solomon Decode
 
+/*
 void ReedSolomonDecode(
     uint64_t buffer_bytes,
     unsigned original_count,

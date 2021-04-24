@@ -10,11 +10,12 @@ import (
 )
 
 func main() {
+	Package("github.com/lazyledger/go-leopard")
+
 	////////////////////////////////////////////////////////////////////////////
 	// func xor_mem
 	////////////////////////////////////////////////////////////////////////////
 	const unroll = 4
-	Package("github.com/lazyledger/go-leopard")
 	Implement("asm_xor_mem")
 	x32 := Mem{Base: Load(Param("vx").Base(), GP64())}
 	y32 := Mem{Base: Load(Param("vy").Base(), GP64())}

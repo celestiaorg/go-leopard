@@ -36,7 +36,7 @@ func Init() error {
 		return ErrCpuNoAVX2
 	}
 
-	// TODO init FF16
+	initializeFF16()
 
 	isInitialized = true
 	return nil

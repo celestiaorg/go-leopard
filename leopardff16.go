@@ -168,57 +168,13 @@ func initializeLogarithmTables() {
 // Specifically section 7 outlines the algorithm used here for 16-bit fields.
 // The ALTMAP memory layout is used since there is no need to convert in/out.
 
-// 4 * 128-bit registers
-type multiply128LUT_t struct {
-	lo [4 * 16]byte
-	hi [4 * 16]byte
-}
-
-var multiply128LUT multiply128LUT_t
-
-/*
-#define LEO_MUL_TABLES_128(table, log_m) \
-    const LEO_M128 T0_lo_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Lo[0]); \
-    const LEO_M128 T1_lo_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Lo[1]); \
-    const LEO_M128 T2_lo_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Lo[2]); \
-    const LEO_M128 T3_lo_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Lo[3]); \
-    const LEO_M128 T0_hi_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Hi[0]); \
-    const LEO_M128 T1_hi_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Hi[1]); \
-    const LEO_M128 T2_hi_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Hi[2]); \
-    const LEO_M128 T3_hi_##table = _mm_loadu_si128(&Multiply128LUT[log_m].Hi[3]);
-
-// 128-bit {prod_lo, prod_hi} = {value_lo, value_hi} * log_m
-#define LEO_MUL_128(value_lo, value_hi, table) { \
-            LEO_M128 data_1 = _mm_srli_epi64(value_lo, 4); \
-            LEO_M128 data_0 = _mm_and_si128(value_lo, clr_mask); \
-            data_1 = _mm_and_si128(data_1, clr_mask); \
-            prod_lo = _mm_shuffle_epi8(T0_lo_##table, data_0); \
-            prod_hi = _mm_shuffle_epi8(T0_hi_##table, data_0); \
-            prod_lo = _mm_xor_si128(prod_lo, _mm_shuffle_epi8(T1_lo_##table, data_1)); \
-            prod_hi = _mm_xor_si128(prod_hi, _mm_shuffle_epi8(T1_hi_##table, data_1)); \
-            data_0 = _mm_and_si128(value_hi, clr_mask); \
-            data_1 = _mm_srli_epi64(value_hi, 4); \
-            data_1 = _mm_and_si128(data_1, clr_mask); \
-            prod_lo = _mm_xor_si128(prod_lo, _mm_shuffle_epi8(T2_lo_##table, data_0)); \
-            prod_hi = _mm_xor_si128(prod_hi, _mm_shuffle_epi8(T2_hi_##table, data_0)); \
-            prod_lo = _mm_xor_si128(prod_lo, _mm_shuffle_epi8(T3_lo_##table, data_1)); \
-            prod_hi = _mm_xor_si128(prod_hi, _mm_shuffle_epi8(T3_hi_##table, data_1)); }
-
-// {x_lo, x_hi} ^= {y_lo, y_hi} * log_m
-#define LEO_MULADD_128(x_lo, x_hi, y_lo, y_hi, table) { \
-            LEO_M128 prod_lo, prod_hi; \
-            LEO_MUL_128(y_lo, y_hi, table); \
-            x_lo = _mm_xor_si128(x_lo, prod_lo); \
-            x_hi = _mm_xor_si128(x_hi, prod_hi); }
-*/
-
 // 4 * 256-bit registers
 type multiply256LUT_t struct {
 	lo [4 * 32]byte
 	hi [4 * 32]byte
 }
 
-var multiply256LUT multiply256LUT_t
+var multiply256LUT [kOrder]multiply256LUT_t
 
 /*
 #define LEO_MUL_TABLES_256(table, log_m) \
@@ -279,20 +235,13 @@ func initializeMultiplyTables() {
 				prod_hi[x] = byte(prod >> 8)
 			}
 
-			// const LEO_M128 value_lo = _mm_loadu_si128((LEO_M128*)prod_lo)
-			// const LEO_M128 value_hi = _mm_loadu_si128((LEO_M128*)prod_hi)
-
-			// Store in 128-bit wide table
-
-			// _mm_storeu_si128((LEO_M128*)&Multiply128LUT[log_m].Lo[i], value_lo)
-			// _mm_storeu_si128((LEO_M128*)&Multiply128LUT[log_m].Hi[i], value_hi)
-
 			// Store in 256-bit wide table
 
-			// _mm256_storeu_si256((LEO_M256*)&Multiply256LUT[log_m].Lo[i],
-			//     _mm256_broadcastsi128_si256(value_lo))
-			// _mm256_storeu_si256((LEO_M256*)&Multiply256LUT[log_m].Hi[i],
-			//     _mm256_broadcastsi128_si256(value_hi))
+			// Copy 16 bytes to low and high 32 bytes
+			copy(multiply256LUT[log_m].lo[i*16+0:i*16+16], prod_lo[:])
+			copy(multiply256LUT[log_m].lo[i*16+16:i*16+32], prod_lo[:])
+			copy(multiply256LUT[log_m].hi[i*16+0:i*16+16], prod_hi[:])
+			copy(multiply256LUT[log_m].hi[i*16+16:i*16+32], prod_hi[:])
 
 			shift += 4
 		}
@@ -328,32 +277,6 @@ static void mul_mem(
         } while (bytes > 0);
 
         return;
-
-        LEO_MUL_TABLES_128(0, log_m);
-
-        const LEO_M128 clr_mask = _mm_set1_epi8(0x0f);
-
-        LEO_M128 * LEO_RESTRICT x16 = reinterpret_cast<LEO_M128 *>(x);
-        const LEO_M128 * LEO_RESTRICT y16 = reinterpret_cast<const LEO_M128 *>(y);
-
-        do
-        {
-#define LEO_MUL_128_LS(x_ptr, y_ptr) { \
-                const LEO_M128 data_lo = _mm_loadu_si128(y_ptr); \
-                const LEO_M128 data_hi = _mm_loadu_si128(y_ptr + 2); \
-                LEO_M128 prod_lo, prod_hi; \
-                LEO_MUL_128(data_lo, data_hi, 0); \
-                _mm_storeu_si128(x_ptr, prod_lo); \
-                _mm_storeu_si128(x_ptr + 2, prod_hi); }
-
-            LEO_MUL_128_LS(x16 + 1, y16 + 1);
-            LEO_MUL_128_LS(x16, y16);
-            x16 += 4, y16 += 4;
-
-            bytes -= 64;
-        } while (bytes > 0);
-
-        return;
 }
 
 
@@ -367,7 +290,7 @@ static ffe_t FFTSkew[kModulus];
 static ffe_t LogWalsh[kOrder];
 
 
-static void FFTInitialize()
+static void fftInitialize()
 {
     ffe_t temp[kBits - 1];
 
@@ -484,37 +407,6 @@ static void IFFT_DIT2(
 
             LEO_IFFTB_256(x32, y32);
             y32 += 2, x32 += 2;
-
-            bytes -= 64;
-        } while (bytes > 0);
-
-        return;
-
-        LEO_MUL_TABLES_128(0, log_m);
-
-        const LEO_M128 clr_mask = _mm_set1_epi8(0x0f);
-
-        LEO_M128 * LEO_RESTRICT x16 = reinterpret_cast<LEO_M128 *>(x);
-        LEO_M128 * LEO_RESTRICT y16 = reinterpret_cast<LEO_M128 *>(y);
-
-        do
-        {
-#define LEO_IFFTB_128(x_ptr, y_ptr) { \
-                LEO_M128 x_lo = _mm_loadu_si128(x_ptr); \
-                LEO_M128 x_hi = _mm_loadu_si128(x_ptr + 2); \
-                LEO_M128 y_lo = _mm_loadu_si128(y_ptr); \
-                LEO_M128 y_hi = _mm_loadu_si128(y_ptr + 2); \
-                y_lo = _mm_xor_si128(y_lo, x_lo); \
-                y_hi = _mm_xor_si128(y_hi, x_hi); \
-                _mm_storeu_si128(y_ptr, y_lo); \
-                _mm_storeu_si128(y_ptr + 2, y_hi); \
-                LEO_MULADD_128(x_lo, x_hi, y_lo, y_hi, 0); \
-                _mm_storeu_si128(x_ptr, x_lo); \
-                _mm_storeu_si128(x_ptr + 2, x_hi); }
-
-            LEO_IFFTB_128(x16 + 1, y16 + 1);
-            LEO_IFFTB_128(x16, y16);
-            x16 += 4, y16 += 4;
 
             bytes -= 64;
         } while (bytes > 0);
@@ -1320,23 +1212,18 @@ void ReedSolomonDecode(
         if (!original[i])
             mul_mem(work[i], work[i + m], kModulus - error_locations[i + m], buffer_bytes);
 }
-
+*/
 
 //------------------------------------------------------------------------------
 // API
 
-static bool IsInitialized = false;
+func initializeFF16() {
+	if isInitialized {
+		return
+	}
 
-bool Initialize()
-{
-    if (IsInitialized)
-        return true;
-
-    InitializeLogarithmTables();
-    InitializeMultiplyTables();
-    FFTInitialize();
-
-    IsInitialized = true;
-    return true;
+	initializeLogarithmTables()
+	initializeMultiplyTables()
+	// TODO
+	// fftInitialize()
 }
-*/

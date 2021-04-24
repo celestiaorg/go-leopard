@@ -258,7 +258,7 @@ func mul_mem(
 	log_m ffe_t,
 	bytes uint64,
 ) {
-	asm_mul_mem(x, y, log_m, bytes)
+	asm_mul_mem(multiply256LUT[:], x, y, log_m, bytes)
 }
 
 //------------------------------------------------------------------------------

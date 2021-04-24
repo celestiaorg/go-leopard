@@ -278,106 +278,104 @@ static void mul_mem(
 
         return;
 }
-
+*/
 
 //------------------------------------------------------------------------------
 // FFT
 
 // Twisted factors used in FFT
-static ffe_t FFTSkew[kModulus];
+var fftSkew [kModulus]ffe_t
 
 // Factors used in the evaluation of the error locator polynomial
-static ffe_t LogWalsh[kOrder];
+var logWalsh [kOrder]ffe_t
 
+func fftInitialize() {
+	var temp [kBits - 1]ffe_t
 
-static void fftInitialize()
-{
-    ffe_t temp[kBits - 1];
+	// Generate FFT skew vector {1}:
 
-    // Generate FFT skew vector {1}:
+	for i := uint32(1); i < kBits; i++ {
+		temp[i-1] = ffe_t(1 << i)
+	}
 
-    for (unsigned i = 1; i < kBits; ++i)
-        temp[i - 1] = static_cast<ffe_t>(1UL << i);
+	for m := uint32(0); m < (kBits - 1); m++ {
+		step := uint32(1) << (m + 1)
 
-    for (unsigned m = 0; m < (kBits - 1); ++m)
-    {
-        const unsigned step = 1UL << (m + 1);
+		fftSkew[(1<<m)-1] = 0
 
-        FFTSkew[(1UL << m) - 1] = 0;
+		for i := m; i < (kBits - 1); i++ {
+			s := uint32(1 << (i + 1))
 
-        for (unsigned i = m; i < (kBits - 1); ++i)
-        {
-            const unsigned s = (1UL << (i + 1));
+			for j := uint32(1<<m) - 1; j < s; j += step {
+				fftSkew[j+s] = fftSkew[j] ^ temp[i]
+			}
+		}
 
-            for (unsigned j = (1UL << m) - 1; j < s; j += step)
-                FFTSkew[j + s] = FFTSkew[j] ^ temp[i];
-        }
+		temp[m] = kModulus - logLUT[multiplyLog(temp[m], logLUT[temp[m]^1])]
 
-        temp[m] = kModulus - LogLUT[MultiplyLog(temp[m], LogLUT[temp[m] ^ 1])];
+		for i := m + 1; i < (kBits - 1); i++ {
+			sum := addMod(logLUT[temp[i]^1], temp[m])
+			temp[i] = multiplyLog(temp[i], sum)
+		}
+	}
 
-        for (unsigned i = m + 1; i < (kBits - 1); ++i)
-        {
-            const ffe_t sum = AddMod(LogLUT[temp[i] ^ 1], temp[m]);
-            temp[i] = MultiplyLog(temp[i], sum);
-        }
-    }
+	for i := uint32(0); i < uint32(kModulus); i++ {
+		fftSkew[i] = logLUT[fftSkew[i]]
+	}
 
-    for (unsigned i = 0; i < kModulus; ++i)
-        FFTSkew[i] = LogLUT[FFTSkew[i]];
+	// Precalculate FWHT(Log[i]):
 
-    // Precalculate FWHT(Log[i]):
+	for i := uint32(0); i < kOrder; i++ {
+		logWalsh[i] = logLUT[i]
+	}
+	logWalsh[0] = 0
 
-    for (unsigned i = 0; i < kOrder; ++i)
-        LogWalsh[i] = LogLUT[i];
-    LogWalsh[0] = 0;
-
-    FWHT(LogWalsh, kOrder, kOrder);
+	fwht(logWalsh[:], kOrder, kOrder)
 }
 
+// Decimation in time IFFT:
+// The decimation in time IFFT algorithm allows us to unroll 2 layers at a time,
+// performing calculations on local registers and faster cache memory.
+// Each ^___^ below indicates a butterfly between the associated indices.
+// The ifft_butterfly(x, y) operation:
+//     y[] ^= x[]
+//     if (log_m != kModulus)
+//         x[] ^= exp(log(y[]) + log_m)
+// Layer 0:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^
+// Layer 1:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^___^   ^___^   ^___^   ^___^
+//       ^___^   ^___^   ^___^   ^___^
 
-    // Decimation in time IFFT:
-    // The decimation in time IFFT algorithm allows us to unroll 2 layers at a time,
-    // performing calculations on local registers and faster cache memory.
-    // Each ^___^ below indicates a butterfly between the associated indices.
-    // The ifft_butterfly(x, y) operation:
-    //     y[] ^= x[]
-    //     if (log_m != kModulus)
-    //         x[] ^= exp(log(y[]) + log_m)
-    // Layer 0:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^
-    // Layer 1:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^___^   ^___^   ^___^   ^___^
-    //       ^___^   ^___^   ^___^   ^___^
+// Layer 2:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^_______^       ^_______^
+//       ^_______^       ^_______^
+//         ^_______^       ^_______^
+//           ^_______^       ^_______^
+// Layer 3:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^_______________^
+//       ^_______________^
+//         ^_______________^
+//           ^_______________^
+//             ^_______________^
+//               ^_______________^
+//                 ^_______________^
+//                   ^_______________^
+// DIT layer 0-1 operations, grouped 4 at a time:
+//     {0-1, 2-3, 0-2, 1-3},
+//     {4-5, 6-7, 4-6, 5-7},
+// DIT layer 1-2 operations, grouped 4 at a time:
+//     {0-2, 4-6, 0-4, 2-6},
+//     {1-3, 5-7, 1-5, 3-7},
+// DIT layer 2-3 operations, grouped 4 at a time:
+//     {0-4, 0'-4', 0-0', 4-4'},
+//     {1-5, 1'-5', 1-1', 5-5'},
 
-    // Layer 2:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^_______^       ^_______^
-    //       ^_______^       ^_______^
-    //         ^_______^       ^_______^
-    //           ^_______^       ^_______^
-    // Layer 3:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^_______________^
-    //       ^_______________^
-    //         ^_______________^
-    //           ^_______________^
-    //             ^_______________^
-    //               ^_______________^
-    //                 ^_______________^
-    //                   ^_______________^
-    // DIT layer 0-1 operations, grouped 4 at a time:
-    //     {0-1, 2-3, 0-2, 1-3},
-    //     {4-5, 6-7, 4-6, 5-7},
-    // DIT layer 1-2 operations, grouped 4 at a time:
-    //     {0-2, 4-6, 0-4, 2-6},
-    //     {1-3, 5-7, 1-5, 3-7},
-    // DIT layer 2-3 operations, grouped 4 at a time:
-    //     {0-4, 0'-4', 0-0', 4-4'},
-    //     {1-5, 1'-5', 1-1', 5-5'},
-
-
+/*
 // 2-way butterfly
 static void IFFT_DIT2(
     void * LEO_RESTRICT x, void * LEO_RESTRICT y,
@@ -1033,6 +1031,5 @@ func initializeFF16() {
 
 	initializeLogarithmTables()
 	initializeMultiplyTables()
-	// TODO
-	// fftInitialize()
+	fftInitialize()
 }

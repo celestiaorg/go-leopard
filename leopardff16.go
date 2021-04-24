@@ -1,5 +1,7 @@
 package leopard
 
+import "bytes"
+
 //------------------------------------------------------------------------------
 // Datatypes and Constants
 
@@ -246,6 +248,14 @@ func initializeMultiplyTables() {
 			shift += 4
 		}
 	}
+}
+
+func mul_mem(
+	x []byte,
+	y []byte,
+	log_m ffe_t,
+	bytes uint64,
+) {
 }
 
 /*
@@ -889,112 +899,119 @@ func reedSolomonEncode(
 //------------------------------------------------------------------------------
 // Reed-Solomon Decode
 
-/*
-void ReedSolomonDecode(
-    uint64_t buffer_bytes,
-    unsigned original_count,
-    unsigned recovery_count,
-    unsigned m, // NextPow2(recovery_count)
-    unsigned n, // NextPow2(m + original_count) = work_count
-    const void* const * const original, // original_count entries
-    const void* const * const recovery, // recovery_count entries
-    void** work) // n entries
-{
-    // Fill in error locations
+func reedSolomonDecode(
+	bufferBytes uint64,
+	original [][]byte, // original_count entries
+	recovery [][]byte, // recovery_count entries
+	work [][]byte, // n entries
+) {
+	originalCount := uint32(len(original))
+	recoveryCount := uint32(len(recovery))
+	m := recoveryCount
+	n := uint32(len(work))
 
-    ffe_t error_locations[kOrder] = {};
-    for (unsigned i = 0; i < recovery_count; ++i)
-        if (!recovery[i])
-            error_locations[i] = 1;
-    for (unsigned i = recovery_count; i < m; ++i)
-        error_locations[i] = 1;
-    for (unsigned i = 0; i < original_count; ++i)
-    {
-        if (!original[i])
-        {
-            error_locations[i + m] = 1;
-        }
-    }
+	zeroBytes := bytes.Repeat([]byte{0}, int(bufferBytes))
 
-    // Evaluate error locator polynomial
+	// Fill in error locations
 
-    FWHT(error_locations, kOrder, m + original_count);
+	var errorLocations [kOrder]ffe_t
+	for i := uint32(0); i < recoveryCount; i++ {
+		if recovery[i] == nil {
+			errorLocations[i] = 1
+		}
+	}
+	for i := recoveryCount; i < m; i++ {
+		errorLocations[i] = 1
+	}
+	for i := uint32(0); i < originalCount; i++ {
+		if original[i] == nil {
+			errorLocations[i+m] = 1
+		}
+	}
 
-    for (int i = 0; i < (int)kOrder; ++i)
-        error_locations[i] = ((unsigned)error_locations[i] * (unsigned)LogWalsh[i]) % kModulus;
+	// Evaluate error locator polynomial
 
-    FWHT(error_locations, kOrder, kOrder);
+	fwht(errorLocations[:], kOrder, m+originalCount)
 
-    // work <- recovery data
+	for i := uint32(0); i < kOrder; i++ {
+		errorLocations[i] = uint16((uint32(errorLocations[i]) * uint32(logWalsh[i])) % uint32(kModulus))
+	}
 
-    for (int i = 0; i < (int)recovery_count; ++i)
-    {
-        if (recovery[i])
-            mul_mem(work[i], recovery[i], error_locations[i], buffer_bytes);
-        else
-            memset(work[i], 0, buffer_bytes);
-    }
-    for (int i = recovery_count; i < (int)m; ++i)
-        memset(work[i], 0, buffer_bytes);
+	fwht(errorLocations[:], kOrder, kOrder)
 
-    // work <- original data
+	// work <- recovery data
 
-    for (int i = 0; i < (int)original_count; ++i)
-    {
-        if (original[i])
-            mul_mem(work[m + i], original[i], error_locations[m + i], buffer_bytes);
-        else
-            memset(work[m + i], 0, buffer_bytes);
-    }
-    for (int i = m + original_count; i < (int)n; ++i)
-        memset(work[i], 0, buffer_bytes);
+	for i := uint32(0); i < recoveryCount; i++ {
+		if recovery[i] != nil {
+			mul_mem(work[i], recovery[i], errorLocations[i], bufferBytes)
+		} else {
+			copy(work[i], zeroBytes)
+		}
+	}
+	for i := recoveryCount; i < m; i++ {
+		copy(work[i], zeroBytes)
+	}
 
-    // work <- IFFT(work, n, 0)
+	// work <- original data
 
-    IFFT_DIT_Decoder(
-        buffer_bytes,
-        m + original_count,
-        work,
-        n,
-        FFTSkew - 1);
+	for i := uint32(0); i < originalCount; i++ {
+		if original[i] != nil {
+			mul_mem(work[m+i], original[i], errorLocations[m+i], bufferBytes)
+		} else {
+			copy(work[m+i], zeroBytes)
+		}
+	}
+	for i := m + originalCount; i < n; i++ {
+		copy(work[i], zeroBytes)
+	}
 
-    // work <- FormalDerivative(work, n)
+	// work <- IFFT(work, n, 0)
 
-    for (unsigned i = 1; i < n; ++i)
-    {
-        const unsigned width = ((i ^ (i - 1)) + 1) >> 1;
+	ifft_DIT_Decoder(
+		bufferBytes,
+		m+originalCount,
+		work,
+		fftSkew[:],
+	)
 
-        if (width < 8)
-        {
-            VectorXOR(
-                buffer_bytes,
-                width,
-                work + i - width,
-                work + i);
-        }
-        else
-        {
-            VectorXOR_Threads(
-                buffer_bytes,
-                width,
-                work + i - width,
-                work + i);
-        }
-    }
+	// work <- FormalDerivative(work, n)
 
-    // work <- FFT(work, n, 0) truncated to m + original_count
+	for i := uint32(1); i < n; i++ {
+		width := ((i ^ (i - 1)) + 1) >> 1
 
-    const unsigned output_count = m + original_count;
+		if width < 8 {
+			vectorXOR(
+				bufferBytes,
+				width,
+				work[i-width:],
+				work[i:],
+			)
+		} else {
+			vectorXOR_Threads(
+				bufferBytes,
+				width,
+				work[i-width:],
+				work[i:],
+			)
+		}
+	}
 
-    FFT_DIT(buffer_bytes, work, output_count, n, FFTSkew - 1);
+	// work <- FFT(work, n, 0) truncated to m + original_count
 
-    // Reveal erasures
+	fft_DIT(
+		bufferBytes,
+		work,
+		fftSkew[:],
+	)
 
-    for (unsigned i = 0; i < original_count; ++i)
-        if (!original[i])
-            mul_mem(work[i], work[i + m], kModulus - error_locations[i + m], buffer_bytes);
+	// Reveal erasures
+
+	for i := uint32(0); i < originalCount; i++ {
+		if original[i] == nil {
+			mul_mem(work[i], work[i+m], kModulus-errorLocations[i+m], bufferBytes)
+		}
+	}
 }
-*/
 
 //------------------------------------------------------------------------------
 // API

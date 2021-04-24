@@ -330,6 +330,3 @@ func leoDecode(
 
 	return nil
 }
-
-func reedSolomonDecode(bufferBytes uint64, originalData [][]byte, recoveryData [][]byte, workData [][]byte) {
-}

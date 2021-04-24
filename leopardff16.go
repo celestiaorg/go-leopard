@@ -624,51 +624,51 @@ static void IFFT_DIT_Decoder(
         }
     }
 }
+*/
 
+// Decimation in time FFT:
+// The decimation in time FFT algorithm allows us to unroll 2 layers at a time,
+// performing calculations on local registers and faster cache memory.
+// Each ^___^ below indicates a butterfly between the associated indices.
+// The fft_butterfly(x, y) operation:
+//     if (log_m != kModulus)
+//         x[] ^= exp(log(y[]) + log_m)
+//     y[] ^= x[]
+// Layer 0:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^_______________^
+//       ^_______________^
+//         ^_______________^
+//           ^_______________^
+//             ^_______________^
+//               ^_______________^
+//                 ^_______________^
+//                   ^_______________^
+// Layer 1:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^_______^       ^_______^
+//       ^_______^       ^_______^
+//         ^_______^       ^_______^
+//           ^_______^       ^_______^
 
-    // Decimation in time FFT:
-    // The decimation in time FFT algorithm allows us to unroll 2 layers at a time,
-    // performing calculations on local registers and faster cache memory.
-    // Each ^___^ below indicates a butterfly between the associated indices.
-    // The fft_butterfly(x, y) operation:
-    //     if (log_m != kModulus)
-    //         x[] ^= exp(log(y[]) + log_m)
-    //     y[] ^= x[]
-    // Layer 0:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^_______________^
-    //       ^_______________^
-    //         ^_______________^
-    //           ^_______________^
-    //             ^_______________^
-    //               ^_______________^
-    //                 ^_______________^
-    //                   ^_______________^
-    // Layer 1:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^_______^       ^_______^
-    //       ^_______^       ^_______^
-    //         ^_______^       ^_______^
-    //           ^_______^       ^_______^
+// Layer 2:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^___^   ^___^   ^___^   ^___^
+//       ^___^   ^___^   ^___^   ^___^
+// Layer 3:
+//     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//     ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^
+// DIT layer 0-1 operations, grouped 4 at a time:
+//     {0-0', 4-4', 0-4, 0'-4'},
+//     {1-1', 5-5', 1-5, 1'-5'},
+// DIT layer 1-2 operations, grouped 4 at a time:
+//     {0-4, 2-6, 0-2, 4-6},
+//     {1-5, 3-7, 1-3, 5-7},
+// DIT layer 2-3 operations, grouped 4 at a time:
+//     {0-2, 1-3, 0-1, 2-3},
+//     {4-6, 5-7, 4-5, 6-7},
 
-    // Layer 2:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^___^   ^___^   ^___^   ^___^
-    //       ^___^   ^___^   ^___^   ^___^
-    // Layer 3:
-    //     0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    //     ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ^_^
-    // DIT layer 0-1 operations, grouped 4 at a time:
-    //     {0-0', 4-4', 0-4, 0'-4'},
-    //     {1-1', 5-5', 1-5, 1'-5'},
-    // DIT layer 1-2 operations, grouped 4 at a time:
-    //     {0-4, 2-6, 0-2, 4-6},
-    //     {1-5, 3-7, 1-3, 5-7},
-    // DIT layer 2-3 operations, grouped 4 at a time:
-    //     {0-2, 1-3, 0-1, 2-3},
-    //     {4-6, 5-7, 4-5, 6-7},
-
-
+/*
 // 2-way butterfly
 static void FFT_DIT2(
     void * LEO_RESTRICT x, void * LEO_RESTRICT y,

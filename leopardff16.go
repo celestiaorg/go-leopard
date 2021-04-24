@@ -556,65 +556,60 @@ func ifft_DIT_Encoder(
 	}
 }
 
-/*
 // Basic no-frills version for decoder
-static void IFFT_DIT_Decoder(
-    const uint64_t bytes,
-    const unsigned m_truncated,
-    void** work,
-    const unsigned m,
-    const ffe_t* skewLUT)
-{
-    // Decimation in time: Unroll 2 layers at a time
-    unsigned dist = 1, dist4 = 4;
-    for (; dist4 <= m; dist = dist4, dist4 <<= 2)
-    {
-        // For each set of dist*4 elements:
-        for (int r = 0; r < (int)m_truncated; r += dist4)
-        {
-            const unsigned i_end = r + dist;
-            const ffe_t log_m01 = skewLUT[i_end];
-            const ffe_t log_m02 = skewLUT[i_end + dist];
-            const ffe_t log_m23 = skewLUT[i_end + dist * 2];
+func ifft_DIT_Decoder(
+	bytes uint64,
+	m uint32,
+	work [][]byte,
+	skewLUT []ffe_t,
+) {
+	// Decimation in time: Unroll 2 layers at a time
+	dist := uint32(1)
+	dist4 := uint32(4)
+	for ; dist4 <= m; dist4 <<= 2 {
+		// For each set of dist*4 elements:
+		for r := uint32(0); r < m; r += dist4 {
+			i_end := r + dist
+			log_m01 := skewLUT[i_end]
+			log_m02 := skewLUT[i_end+dist]
+			log_m23 := skewLUT[i_end+dist*2]
 
-            // For each set of dist elements:
-            for (int i = r; i < (int)i_end; ++i)
-            {
-                IFFT_DIT4(
-                    bytes,
-                    work + i,
-                    dist,
-                    log_m01,
-                    log_m23,
-                    log_m02);
-            }
-        }
-    }
+			// For each set of dist elements:
+			for i := r; i < i_end; i++ {
+				ifft_DIT4(
+					bytes,
+					work[i:],
+					dist,
+					log_m01,
+					log_m23,
+					log_m02,
+				)
+			}
+		}
 
-    // If there is one layer left:
-    if (dist < m)
-    {
-        // Assuming that dist = m / 2
-        LEO_DEBUG_ASSERT(dist * 2 == m);
+		dist = dist4
+	}
 
-        const ffe_t log_m = skewLUT[dist];
+	// If there is one layer left:
+	if dist < m {
+		// Assuming that dist = m / 2
 
-        if (log_m == kModulus)
-            VectorXOR_Threads(bytes, dist, work + dist, work);
-        else
-        {
-            for (int i = 0; i < (int)dist; ++i)
-            {
-                IFFT_DIT2(
-                    work[i],
-                    work[i + dist],
-                    log_m,
-                    bytes);
-            }
-        }
-    }
+		log_m := skewLUT[dist]
+
+		if log_m == kModulus {
+			vectorXOR_Threads(bytes, dist, work[dist:], work)
+		} else {
+			for i := uint32(0); i < dist; i++ {
+				ifft_DIT2(
+					work[i:],
+					work[i+dist:],
+					log_m,
+					bytes,
+				)
+			}
+		}
+	}
 }
-*/
 
 // Decimation in time FFT:
 // The decimation in time FFT algorithm allows us to unroll 2 layers at a time,
@@ -768,63 +763,61 @@ static void FFT_DIT4(
 
         return;
 }
-
+*/
 
 // In-place FFT for encoder and decoder
-static void FFT_DIT(
-    const uint64_t bytes,
-    void** work,
-    const unsigned m_truncated,
-    const unsigned m,
-    const ffe_t* skewLUT)
-{
-    // Decimation in time: Unroll 2 layers at a time
-    unsigned dist4 = m, dist = m >> 2;
-    for (; dist != 0; dist4 = dist, dist >>= 2)
-    {
-        // For each set of dist*4 elements:
-        for (int r = 0; r < (int)m_truncated; r += dist4)
-        {
-            const unsigned i_end = r + dist;
-            const ffe_t log_m01 = skewLUT[i_end];
-            const ffe_t log_m02 = skewLUT[i_end + dist];
-            const ffe_t log_m23 = skewLUT[i_end + dist * 2];
+func fft_DIT(
+	bytes uint64,
+	work [][]byte,
+	skewLUT []ffe_t,
+) {
+	m := uint32(len(work)) / 2
 
-            // For each set of dist elements:
-            for (int i = r; i < (int)i_end; ++i)
-            {
-                FFT_DIT4(
-                    bytes,
-                    work + i,
-                    dist,
-                    log_m01,
-                    log_m23,
-                    log_m02);
-            }
-        }
-    }
+	// Decimation in time: Unroll 2 layers at a time
+	dist4 := m
+	dist := m >> 2
+	for ; dist != 0; dist >>= 2 {
+		// For each set of dist*4 elements:
+		for r := uint32(0); r < m; r += dist4 {
+			i_end := r + dist
+			log_m01 := skewLUT[i_end]
+			log_m02 := skewLUT[i_end+dist]
+			log_m23 := skewLUT[i_end+dist*2]
 
-    // If there is one layer left:
-    if (dist4 == 2)
-    {
-        for (int r = 0; r < (int)m_truncated; r += 2)
-        {
-            const ffe_t log_m = skewLUT[r + 1];
+			// For each set of dist elements:
+			for i := r; i < i_end; i++ {
+				fft_DIT4(
+					bytes,
+					work[i:],
+					dist,
+					log_m01,
+					log_m23,
+					log_m02,
+				)
+			}
+		}
 
-            if (log_m == kModulus)
-                xor_mem(work[r + 1], work[r], bytes);
-            else
-            {
-                FFT_DIT2(
-                    work[r],
-                    work[r + 1],
-                    log_m,
-                    bytes);
-            }
-        }
-    }
+		dist4 = dist
+	}
+
+	// If there is one layer left:
+	if dist4 == 2 {
+		for r := uint32(0); r < m; r += 2 {
+			log_m := skewLUT[r+1]
+
+			if log_m == kModulus {
+				xor_mem(work[r+1], work[r], bytes)
+			} else {
+				fft_DIT2(
+					work[r:],
+					work[r+1:],
+					log_m,
+					bytes,
+				)
+			}
+		}
+	}
 }
-*/
 
 //------------------------------------------------------------------------------
 // Reed-Solomon Encode
@@ -851,7 +844,7 @@ func reedSolomonEncode(
 	fft_DIT(
 		bufferBytes,
 		work,
-		fftSkew,
+		fftSkew[:],
 	)
 }
 

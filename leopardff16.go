@@ -362,6 +362,7 @@ func ifft_DIT2(
 	log_m ffe_t,
 	bytes uint64,
 ) {
+	asm_ifft_DIT2(x, y, log_m, bytes)
 }
 
 /*
@@ -410,6 +411,7 @@ func ifft_DIT4(
 	log_m23 ffe_t,
 	log_m02 ffe_t,
 ) {
+	asm_ifft_DIT4(bytes, work, dist, log_m01, log_m23, log_m02)
 }
 
 /*
@@ -659,6 +661,7 @@ func fft_DIT2(
 	log_m ffe_t,
 	bytes uint64,
 ) {
+	asm_fft_DIT2(x, y, log_m, bytes)
 }
 
 /*
@@ -708,6 +711,7 @@ func fft_DIT4(
 	log_m23 ffe_t,
 	log_m02 ffe_t,
 ) {
+	asm_fft_DIT4(bytes, work, dist, log_m01, log_m23, log_m02)
 }
 
 /*

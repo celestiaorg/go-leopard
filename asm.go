@@ -1,5 +1,5 @@
 // +build ignore
-//go:generate go run asm.go -out asm.s -pkg leopard -stubs asmstub.go
+//go:generate go run asm.go -out asm.s -pkg leopard
 
 package main
 
@@ -14,7 +14,8 @@ func main() {
 	// func xor_mem
 	////////////////////////////////////////////////////////////////////////////
 	const unroll = 4
-	TEXT("asm_xor_mem", NOSPLIT, "func(vx []byte, vy []byte, bytes uint64)")
+	Package("github.com/lazyledger/go-leopard")
+	Implement("asm_xor_mem")
 	x32 := Mem{Base: Load(Param("vx").Base(), GP64())}
 	y32 := Mem{Base: Load(Param("vy").Base(), GP64())}
 	bytes := Load(Param("bytes"), GP64())

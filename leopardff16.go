@@ -915,182 +915,6 @@ skip_body:
 
 
 //------------------------------------------------------------------------------
-// ErrorBitfield
-
-#ifdef LEO_ERROR_BITFIELD_OPT
-
-// Used in decoding to decide which final FFT operations to perform
-class ErrorBitfield
-{
-    static const unsigned kWordMips = 5;
-    static const unsigned kWords = kOrder / 64;
-    uint64_t Words[kWordMips][kWords] = {};
-
-    static const unsigned kBigMips = 6;
-    static const unsigned kBigWords = (kWords + 63) / 64;
-    uint64_t BigWords[kBigMips][kBigWords] = {};
-
-    static const unsigned kBiggestMips = 4;
-    uint64_t BiggestWords[kBiggestMips] = {};
-
-public:
-    LEO_FORCE_INLINE void Set(unsigned i)
-    {
-        Words[0][i / 64] |= (uint64_t)1 << (i % 64);
-    }
-
-    void Prepare();
-
-    LEO_FORCE_INLINE bool IsNeeded(unsigned mip_level, unsigned bit) const
-    {
-        if (mip_level >= 16)
-            return true;
-        if (mip_level >= 12)
-        {
-            bit /= 4096;
-            return 0 != (BiggestWords[mip_level - 12] & ((uint64_t)1 << bit));
-        }
-        if (mip_level >= 6)
-        {
-            bit /= 64;
-            return 0 != (BigWords[mip_level - 6][bit / 64] & ((uint64_t)1 << (bit % 64)));
-        }
-        return 0 != (Words[mip_level - 1][bit / 64] & ((uint64_t)1 << (bit % 64)));
-    }
-};
-
-static const uint64_t kHiMasks[5] = {
-    0xAAAAAAAAAAAAAAAAULL,
-    0xCCCCCCCCCCCCCCCCULL,
-    0xF0F0F0F0F0F0F0F0ULL,
-    0xFF00FF00FF00FF00ULL,
-    0xFFFF0000FFFF0000ULL,
-};
-
-void ErrorBitfield::Prepare()
-{
-    // First mip level is for final layer of FFT: pairs of data
-    for (unsigned i = 0; i < kWords; ++i)
-    {
-        uint64_t w_i = Words[0][i];
-        const uint64_t hi2lo0 = w_i | ((w_i & kHiMasks[0]) >> 1);
-        const uint64_t lo2hi0 = ((w_i & (kHiMasks[0] >> 1)) << 1);
-        Words[0][i] = w_i = hi2lo0 | lo2hi0;
-
-        for (unsigned j = 1, bits = 2; j < kWordMips; ++j, bits <<= 1)
-        {
-            const uint64_t hi2lo_j = w_i | ((w_i & kHiMasks[j]) >> bits);
-            const uint64_t lo2hi_j = ((w_i & (kHiMasks[j] >> bits)) << bits);
-            Words[j][i] = w_i = hi2lo_j | lo2hi_j;
-        }
-    }
-
-    for (unsigned i = 0; i < kBigWords; ++i)
-    {
-        uint64_t w_i = 0;
-        uint64_t bit = 1;
-        const uint64_t* src = &Words[kWordMips - 1][i * 64];
-        for (unsigned j = 0; j < 64; ++j, bit <<= 1)
-        {
-            const uint64_t w = src[j];
-            w_i |= (w | (w >> 32) | (w << 32)) & bit;
-        }
-        BigWords[0][i] = w_i;
-
-        for (unsigned j = 1, bits = 1; j < kBigMips; ++j, bits <<= 1)
-        {
-            const uint64_t hi2lo_j = w_i | ((w_i & kHiMasks[j - 1]) >> bits);
-            const uint64_t lo2hi_j = ((w_i & (kHiMasks[j - 1] >> bits)) << bits);
-            BigWords[j][i] = w_i = hi2lo_j | lo2hi_j;
-        }
-    }
-
-    uint64_t w_i = 0;
-    uint64_t bit = 1;
-    const uint64_t* src = &BigWords[kBigMips - 1][0];
-    for (unsigned j = 0; j < kBigWords; ++j, bit <<= 1)
-    {
-        const uint64_t w = src[j];
-        w_i |= (w | (w >> 32) | (w << 32)) & bit;
-    }
-    BiggestWords[0] = w_i;
-
-    for (unsigned j = 1, bits = 1; j < kBiggestMips; ++j, bits <<= 1)
-    {
-        const uint64_t hi2lo_j = w_i | ((w_i & kHiMasks[j - 1]) >> bits);
-        const uint64_t lo2hi_j = ((w_i & (kHiMasks[j - 1] >> bits)) << bits);
-        BiggestWords[j] = w_i = hi2lo_j | lo2hi_j;
-    }
-}
-
-
-static void FFT_DIT_ErrorBits(
-    const uint64_t bytes,
-    void** work,
-    const unsigned n_truncated,
-    const unsigned n,
-    const ffe_t* skewLUT,
-    const ErrorBitfield& error_bits)
-{
-    unsigned mip_level = LastNonzeroBit32(n);
-
-    // Decimation in time: Unroll 2 layers at a time
-    unsigned dist4 = n, dist = n >> 2;
-    for (; dist != 0; dist4 = dist, dist >>= 2, mip_level -=2)
-    {
-        // For each set of dist*4 elements:
-        for (int r = 0; r < (int)n_truncated; r += dist4)
-        {
-            if (!error_bits.IsNeeded(mip_level, r))
-                continue;
-
-            const unsigned i_end = r + dist;
-            const ffe_t log_m01 = skewLUT[i_end];
-            const ffe_t log_m02 = skewLUT[i_end + dist];
-            const ffe_t log_m23 = skewLUT[i_end + dist * 2];
-
-            // For each set of dist elements:
-            for (int i = r; i < (int)i_end; ++i)
-            {
-                FFT_DIT4(
-                    bytes,
-                    work + i,
-                    dist,
-                    log_m01,
-                    log_m23,
-                    log_m02);
-            }
-        }
-    }
-
-    // If there is one layer left:
-    if (dist4 == 2)
-    {
-        for (int r = 0; r < (int)n_truncated; r += 2)
-        {
-            if (!error_bits.IsNeeded(mip_level, r))
-                continue;
-
-            const ffe_t log_m = skewLUT[r + 1];
-
-            if (log_m == kModulus)
-                xor_mem(work[r + 1], work[r], bytes);
-            else
-            {
-                FFT_DIT2(
-                    work[r],
-                    work[r + 1],
-                    log_m,
-                    bytes);
-            }
-        }
-    }
-}
-
-#endif // LEO_ERROR_BITFIELD_OPT
-
-
-//------------------------------------------------------------------------------
 // Reed-Solomon Decode
 
 void ReedSolomonDecode(
@@ -1105,10 +929,6 @@ void ReedSolomonDecode(
 {
     // Fill in error locations
 
-#ifdef LEO_ERROR_BITFIELD_OPT
-    ErrorBitfield error_bits;
-#endif // LEO_ERROR_BITFIELD_OPT
-
     ffe_t error_locations[kOrder] = {};
     for (unsigned i = 0; i < recovery_count; ++i)
         if (!recovery[i])
@@ -1120,15 +940,8 @@ void ReedSolomonDecode(
         if (!original[i])
         {
             error_locations[i + m] = 1;
-#ifdef LEO_ERROR_BITFIELD_OPT
-            error_bits.Set(i + m);
-#endif // LEO_ERROR_BITFIELD_OPT
         }
     }
-
-#ifdef LEO_ERROR_BITFIELD_OPT
-    error_bits.Prepare();
-#endif // LEO_ERROR_BITFIELD_OPT
 
     // Evaluate error locator polynomial
 
@@ -1200,11 +1013,7 @@ void ReedSolomonDecode(
 
     const unsigned output_count = m + original_count;
 
-#ifdef LEO_ERROR_BITFIELD_OPT
-    FFT_DIT_ErrorBits(buffer_bytes, work, output_count, n, FFTSkew - 1, error_bits);
-#else
     FFT_DIT(buffer_bytes, work, output_count, n, FFTSkew - 1);
-#endif
 
     // Reveal erasures
 

@@ -258,39 +258,8 @@ func mul_mem(
 	log_m ffe_t,
 	bytes uint64,
 ) {
+	asm_mul_mem(x, y, log_m, bytes)
 }
-
-/*
-static void mul_mem(
-    void * LEO_RESTRICT x, const void * LEO_RESTRICT y,
-    ffe_t log_m, uint64_t bytes)
-{
-        LEO_MUL_TABLES_256(0, log_m);
-
-        const LEO_M256 clr_mask = _mm256_set1_epi8(0x0f);
-
-        LEO_M256 * LEO_RESTRICT x32 = reinterpret_cast<LEO_M256 *>(x);
-        const LEO_M256 * LEO_RESTRICT y32 = reinterpret_cast<const LEO_M256 *>(y);
-
-        do
-        {
-#define LEO_MUL_256_LS(x_ptr, y_ptr) { \
-            const LEO_M256 data_lo = _mm256_loadu_si256(y_ptr); \
-            const LEO_M256 data_hi = _mm256_loadu_si256(y_ptr + 1); \
-            LEO_M256 prod_lo, prod_hi; \
-            LEO_MUL_256(data_lo, data_hi, 0); \
-            _mm256_storeu_si256(x_ptr, prod_lo); \
-            _mm256_storeu_si256(x_ptr + 1, prod_hi); }
-
-            LEO_MUL_256_LS(x32, y32);
-            y32 += 2, x32 += 2;
-
-            bytes -= 64;
-        } while (bytes > 0);
-
-        return;
-}
-*/
 
 //------------------------------------------------------------------------------
 // FFT

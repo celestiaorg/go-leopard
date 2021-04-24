@@ -1,6 +1,8 @@
 package leopard
 
-import "bytes"
+import (
+	"bytes"
+)
 
 //------------------------------------------------------------------------------
 // Datatypes and Constants
@@ -156,8 +158,8 @@ func initializeLogarithmTables() {
 		logLUT[i] = expLUT[logLUT[i]]
 	}
 
-	for i := ffe_t(0); i <= kModulus; i++ {
-		expLUT[logLUT[i]] = i
+	for i := uint32(0); i < kOrder; i++ {
+		expLUT[logLUT[i]] = ffe_t(i)
 	}
 
 	expLUT[kModulus] = expLUT[0]

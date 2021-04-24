@@ -33,7 +33,7 @@ var kCantorBasis = [...]ffe_t{
 
 // z = x + y (mod kModulus)
 func addMod(a, b ffe_t) ffe_t {
-	sum := a + b
+	sum := uint32(a) + uint32(b)
 
 	// Partial reduction step, allowing for kModulus to be returned
 	return ffe_t(sum + (sum >> kBits))
@@ -41,7 +41,7 @@ func addMod(a, b ffe_t) ffe_t {
 
 // z = x - y (mod kModulus)
 func subMod(a, b ffe_t) ffe_t {
-	dif := a - b
+	dif := uint32(a) - uint32(b)
 
 	// Partial reduction step, allowing for kModulus to be returned
 	return ffe_t(dif + (dif >> kBits))

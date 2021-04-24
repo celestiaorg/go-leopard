@@ -284,7 +284,7 @@ static void mul_mem(
 // FFT
 
 // Twisted factors used in FFT
-var fftSkew [kModulus]ffe_t
+var fftSkew [kOrder]ffe_t
 
 // Factors used in the evaluation of the error locator polynomial
 var logWalsh [kOrder]ffe_t
@@ -301,13 +301,13 @@ func fftInitialize() {
 	for m := uint32(0); m < (kBits - 1); m++ {
 		step := uint32(1) << (m + 1)
 
-		fftSkew[(1<<m)-1] = 0
+		fftSkew[(1 << m)] = 0
 
 		for i := m; i < (kBits - 1); i++ {
 			s := uint32(1 << (i + 1))
 
 			for j := uint32(1<<m) - 1; j < s; j += step {
-				fftSkew[j+s] = fftSkew[j] ^ temp[i]
+				fftSkew[j+s+1] = fftSkew[j+1] ^ temp[i]
 			}
 		}
 
@@ -320,7 +320,7 @@ func fftInitialize() {
 	}
 
 	for i := uint32(0); i < uint32(kModulus); i++ {
-		fftSkew[i] = logLUT[fftSkew[i]]
+		fftSkew[i+1] = logLUT[fftSkew[i+1]]
 	}
 
 	// Precalculate FWHT(Log[i]):
@@ -491,7 +491,6 @@ static void IFFT_DIT_Encoder(
     const void* const* data,
     const unsigned m_truncated,
     void** work,
-    void** xor_result,
     const unsigned m,
     const ffe_t* skewLUT)
 {
@@ -559,11 +558,6 @@ static void IFFT_DIT_Encoder(
             }
         }
     }
-
-    // I tried unrolling this but it does not provide more than 5% performance
-    // improvement for 16-bit finite fields, so it's not worth the complexity.
-    if (xor_result)
-        VectorXOR_Threads(bytes, m, xor_result, work);
 }
 
 
@@ -834,84 +828,38 @@ static void FFT_DIT(
         }
     }
 }
-
+*/
 
 //------------------------------------------------------------------------------
 // Reed-Solomon Encode
 
-void ReedSolomonEncode(
-    uint64_t buffer_bytes,
-    unsigned original_count,
-    unsigned recovery_count,
-    unsigned m,
-    const void* const * data,
-    void** work)
-{
-    // work <- IFFT(data, m, m)
+func reedSolomonEncode(
+	bufferBytes uint64,
+	data [][]byte,
+	work [][]byte,
+) error {
+	originalCount := uint32(len(data))
 
-    const ffe_t* skewLUT = FFTSkew + m - 1;
+	// work <- IFFT(data, m, m)
 
-    IFFT_DIT_Encoder(
-        buffer_bytes,
-        data,
-        original_count < m ? original_count : m,
-        work,
-        nullptr, // No xor output
-        m,
-        skewLUT);
+	skewLUT := fftSkew[originalCount]
 
-    const unsigned last_count = original_count % m;
-    if (m >= original_count)
-        goto skip_body;
+	ifft_DIT_Encoder(
+		bufferBytes,
+		data,
+		work,
+		skewLUT,
+	)
 
-    // For sets of m data pieces:
-    for (unsigned i = m; i + m <= original_count; i += m)
-    {
-        data += m;
-        skewLUT += m;
-
-        // work <- work xor IFFT(data + i, m, m + i)
-
-        IFFT_DIT_Encoder(
-            buffer_bytes,
-            data, // data source
-            m,
-            work + m, // temporary workspace
-            work, // xor destination
-            m,
-            skewLUT);
-    }
-
-    // Handle final partial set of m pieces:
-    if (last_count != 0)
-    {
-        data += m;
-        skewLUT += m;
-
-        // work <- work xor IFFT(data + i, m, m + i)
-
-        IFFT_DIT_Encoder(
-            buffer_bytes,
-            data, // data source
-            last_count,
-            work + m, // temporary workspace
-            work, // xor destination
-            m,
-            skewLUT);
-    }
-
-skip_body:
-
-    // work <- FFT(work, m, 0)
-    FFT_DIT(
-        buffer_bytes,
-        work,
-        recovery_count,
-        m,
-        FFTSkew - 1);
+	// work <- FFT(work, m, 0)
+	fft_DIT(
+		bufferBytes,
+		work,
+		fftSkew,
+	)
 }
 
-
+/*
 //------------------------------------------------------------------------------
 // Reed-Solomon Decode
 

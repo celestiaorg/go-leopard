@@ -32,7 +32,7 @@ var kCantorBasis = [...]ffe_t{
 // Field Operations
 
 // z = x + y (mod kModulus)
-func AddMod(a, b ffe_t) ffe_t {
+func addMod(a, b ffe_t) ffe_t {
 	sum := a + b
 
 	// Partial reduction step, allowing for kModulus to be returned
@@ -40,7 +40,7 @@ func AddMod(a, b ffe_t) ffe_t {
 }
 
 // z = x - y (mod kModulus)
-func SubMod(a, b ffe_t) ffe_t {
+func subMod(a, b ffe_t) ffe_t {
 	dif := a - b
 
 	// Partial reduction step, allowing for kModulus to be returned
@@ -51,13 +51,13 @@ func SubMod(a, b ffe_t) ffe_t {
 // Fast Walsh-Hadamard Transform (FWHT) (mod kModulus)
 
 // {a, b} = {a + b, a - b} (Mod Q)
-func FWHT_2(a, b ffe_t) (ffe_t, ffe_t) {
-	sum := AddMod(a, b)
-	dif := SubMod(a, b)
+func fwht_2(a, b ffe_t) (ffe_t, ffe_t) {
+	sum := addMod(a, b)
+	dif := subMod(a, b)
 	return sum, dif
 }
 
-func FWHT_4(data []ffe_t, s uint32) {
+func fwht_4(data []ffe_t, s uint32) {
 	s2 := s << 1
 
 	t0 := data[0]
@@ -65,10 +65,10 @@ func FWHT_4(data []ffe_t, s uint32) {
 	t2 := data[s2]
 	t3 := data[s2+s]
 
-	t0, t1 = FWHT_2(t0, t1)
-	t2, t3 = FWHT_2(t2, t3)
-	t0, t2 = FWHT_2(t0, t2)
-	t1, t3 = FWHT_2(t1, t3)
+	t0, t1 = fwht_2(t0, t1)
+	t2, t3 = fwht_2(t2, t3)
+	t0, t2 = fwht_2(t0, t2)
+	t1, t3 = fwht_2(t1, t3)
 
 	data[0] = t0
 	data[s] = t1
@@ -79,7 +79,7 @@ func FWHT_4(data []ffe_t, s uint32) {
 // Decimation in time (DIT) Fast Walsh-Hadamard Transform
 // Unrolls pairs of layers to perform cross-layer operations in registers
 // m_truncated: Number of elements that are non-zero at the front of data
-func FWHT(data []ffe_t, m uint32, m_truncated uint32) {
+func fwht(data []ffe_t, m uint32, m_truncated uint32) {
 	// Decimation in time: Unroll 2 layers at a time
 	dist := uint32(1)
 	dist4 := uint32(4)
@@ -89,7 +89,7 @@ func FWHT(data []ffe_t, m uint32, m_truncated uint32) {
 			// For each set of dist elements:
 			i_end := r + dist
 			for i := r; i < i_end; i++ {
-				FWHT_4(data[i:], dist)
+				fwht_4(data[i:], dist)
 			}
 		}
 		dist = dist4
@@ -98,7 +98,7 @@ func FWHT(data []ffe_t, m uint32, m_truncated uint32) {
 	// If there is one layer left:
 	if dist < m {
 		for i := uint32(0); i < dist; i++ {
-			data[i], data[i+dist] = FWHT_2(data[i], data[i+dist])
+			data[i], data[i+dist] = fwht_2(data[i], data[i+dist])
 		}
 	}
 }
@@ -106,8 +106,8 @@ func FWHT(data []ffe_t, m uint32, m_truncated uint32) {
 //------------------------------------------------------------------------------
 // Logarithm Tables
 
-var LogLUT [kOrder]ffe_t
-var ExpLUT [kOrder]ffe_t
+var logLUT [kOrder]ffe_t
+var expLUT [kOrder]ffe_t
 
 // Returns a * Log(b)
 //
@@ -117,48 +117,48 @@ var ExpLUT [kOrder]ffe_t
 // initialization step that is less performance critical.  The LogWalsh[]
 // table below contains precalculated logarithms so it is easier to do
 // all the other multiplies in that form as well.
-func MultiplyLog(a, log_b ffe_t) ffe_t {
+func multiplyLog(a, log_b ffe_t) ffe_t {
 	if a == 0 {
 		return 0
 	}
-	return ExpLUT[AddMod(LogLUT[a], log_b)]
+	return expLUT[addMod(logLUT[a], log_b)]
 }
 
 // Initialize LogLUT[], ExpLUT[]
-func InitializeLogarithmTables() {
+func initializeLogarithmTables() {
 	// LFSR table generation:
 
 	state := uint32(1)
 	for i := uint16(0); i < kModulus; i++ {
-		ExpLUT[state] = ffe_t(i)
+		expLUT[state] = ffe_t(i)
 		state <<= 1
 		if state >= kOrder {
 			state ^= kPolynomial
 		}
 	}
-	ExpLUT[0] = kModulus
+	expLUT[0] = kModulus
 
 	// Conversion to Cantor basis:
 
-	LogLUT[0] = 0
+	logLUT[0] = 0
 	for i := uint32(0); i < kBits; i++ {
 		basis := kCantorBasis[i]
 		width := uint32(1) << i
 
 		for j := uint32(0); j < width; j++ {
-			LogLUT[j+width] = LogLUT[j] ^ basis
+			logLUT[j+width] = logLUT[j] ^ basis
 		}
 	}
 
 	for i := uint32(0); i < kOrder; i++ {
-		LogLUT[i] = ExpLUT[LogLUT[i]]
+		logLUT[i] = expLUT[logLUT[i]]
 	}
 
 	for i := ffe_t(0); i <= kModulus; i++ {
-		ExpLUT[LogLUT[i]] = i
+		expLUT[logLUT[i]] = i
 	}
 
-	ExpLUT[kModulus] = ExpLUT[0]
+	expLUT[kModulus] = expLUT[0]
 }
 
 //------------------------------------------------------------------------------
@@ -168,14 +168,13 @@ func InitializeLogarithmTables() {
 // Specifically section 7 outlines the algorithm used here for 16-bit fields.
 // The ALTMAP memory layout is used since there is no need to convert in/out.
 
-type LEO_M128 = uint64
-
-type Multiply128LUT_t struct {
-	Lo [4]LEO_M128
-	Hi [4]LEO_M128
+// 4 * 128-bit registers
+type multiply128LUT_t struct {
+	lo [4 * 16]byte
+	hi [4 * 16]byte
 }
 
-var Multiply128LUT *Multiply128LUT_t
+var multiply128LUT multiply128LUT_t
 
 /*
 #define LEO_MUL_TABLES_128(table, log_m) \
@@ -211,16 +210,17 @@ var Multiply128LUT *Multiply128LUT_t
             LEO_MUL_128(y_lo, y_hi, table); \
             x_lo = _mm_xor_si128(x_lo, prod_lo); \
             x_hi = _mm_xor_si128(x_hi, prod_hi); }
+*/
 
+// 4 * 256-bit registers
+type multiply256LUT_t struct {
+	lo [4 * 32]byte
+	hi [4 * 32]byte
+}
 
-struct Multiply256LUT_t
-{
-    LEO_M256 Lo[4];
-    LEO_M256 Hi[4];
-};
+var multiply256LUT multiply256LUT_t
 
-static const Multiply256LUT_t* Multiply256LUT = nullptr;
-
+/*
 #define LEO_MUL_TABLES_256(table, log_m) \
         const LEO_M256 T0_lo_##table = _mm256_loadu_si256(&Multiply256LUT[log_m].Lo[0]); \
         const LEO_M256 T1_lo_##table = _mm256_loadu_si256(&Multiply256LUT[log_m].Lo[1]); \
@@ -254,122 +254,52 @@ static const Multiply256LUT_t* Multiply256LUT = nullptr;
             LEO_MUL_256(y_lo, y_hi, table); \
             x_lo = _mm256_xor_si256(x_lo, prod_lo); \
             x_hi = _mm256_xor_si256(x_hi, prod_hi); }
+*/
 
 // Stores the partial products of x * y at offset x + y * 65536
 // Repeated accesses from the same y value are faster
-struct Product16Table
-{
-    ffe_t LUT[4 * 16];
-};
-static const Product16Table* Multiply16LUT = nullptr;
-
-
-// Reference version of muladd: x[] ^= y[] * log_m
-static LEO_FORCE_INLINE void RefMulAdd(
-    void* LEO_RESTRICT x,
-    const void* LEO_RESTRICT y,
-    ffe_t log_m,
-    uint64_t bytes)
-{
-    const ffe_t* LEO_RESTRICT lut = Multiply16LUT[log_m].LUT;
-    const uint8_t * LEO_RESTRICT y1 = reinterpret_cast<const uint8_t *>(y);
-    uint8_t * LEO_RESTRICT x1 = reinterpret_cast<uint8_t *>(x);
-
-    do
-    {
-        for (unsigned i = 0; i < 32; ++i)
-        {
-            const unsigned lo = y1[i];
-            const unsigned hi = y1[i + 32];
-
-            const ffe_t prod = \
-                lut[(lo & 15)] ^ \
-                lut[(lo >> 4) + 16] ^ \
-                lut[(hi & 15) + 32] ^ \
-                lut[(hi >> 4) + 48];
-
-            x1[i] ^= (uint8_t)prod;
-            x1[i + 32] ^= (uint8_t)(prod >> 8);
-        }
-
-        x1 += 64, y1 += 64;
-        bytes -= 64;
-    } while (bytes > 0);
-
+type product16Table struct {
+	lut [4 * 16]ffe_t
 }
 
-// Reference version of mul: x[] = y[] * log_m
-static LEO_FORCE_INLINE void RefMul(
-    void* LEO_RESTRICT x,
-    const void* LEO_RESTRICT y,
-    ffe_t log_m,
-    uint64_t bytes)
-{
-    const ffe_t* LEO_RESTRICT lut = Multiply16LUT[log_m].LUT;
-    const uint8_t * LEO_RESTRICT y1 = reinterpret_cast<const uint8_t *>(y);
-    uint8_t * LEO_RESTRICT x1 = reinterpret_cast<uint8_t *>(x);
+var multiply16LUT product16Table
 
-    do
-    {
-        for (unsigned i = 0; i < 32; ++i)
-        {
-            const unsigned lo = y1[i];
-            const unsigned hi = y1[i + 32];
+func initializeMultiplyTables() {
+	// For each value we could multiply by:
+	for log_m := uint32(0); log_m < kOrder; log_m++ {
+		// For each 4 bits of the finite field width in bits:
+		shift := 0
+		for i := uint32(0); i < 4; i++ {
+			// Construct 16 entry LUT for PSHUFB
+			var prod_lo [16]byte
+			var prod_hi [16]byte
+			for x := ffe_t(0); x < 16; x++ {
+				prod := multiplyLog(x<<shift, ffe_t(log_m))
+				prod_lo[x] = byte(prod)
+				prod_hi[x] = byte(prod >> 8)
+			}
 
-            const ffe_t prod = \
-                lut[(lo & 15)] ^ \
-                lut[(lo >> 4) + 16] ^ \
-                lut[(hi & 15) + 32] ^ \
-                lut[(hi >> 4) + 48];
+			// const LEO_M128 value_lo = _mm_loadu_si128((LEO_M128*)prod_lo)
+			// const LEO_M128 value_hi = _mm_loadu_si128((LEO_M128*)prod_hi)
 
-            x1[i] = (uint8_t)prod;
-            x1[i + 32] = (uint8_t)(prod >> 8);
-        }
+			// Store in 128-bit wide table
 
-        x1 += 64, y1 += 64;
-        bytes -= 64;
-    } while (bytes > 0);
+			// _mm_storeu_si128((LEO_M128*)&Multiply128LUT[log_m].Lo[i], value_lo)
+			// _mm_storeu_si128((LEO_M128*)&Multiply128LUT[log_m].Hi[i], value_hi)
+
+			// Store in 256-bit wide table
+
+			// _mm256_storeu_si256((LEO_M256*)&Multiply256LUT[log_m].Lo[i],
+			//     _mm256_broadcastsi128_si256(value_lo))
+			// _mm256_storeu_si256((LEO_M256*)&Multiply256LUT[log_m].Hi[i],
+			//     _mm256_broadcastsi128_si256(value_hi))
+
+			shift += 4
+		}
+	}
 }
 
-
-static void InitializeMultiplyTables()
-{
-        Multiply256LUT = reinterpret_cast<const Multiply256LUT_t*>(SIMDSafeAllocate(sizeof(Multiply256LUT_t) * kOrder));
-
-    // For each value we could multiply by:
-    for (int log_m = 0; log_m < (int)kOrder; ++log_m)
-    {
-        // For each 4 bits of the finite field width in bits:
-        for (unsigned i = 0, shift = 0; i < 4; ++i, shift += 4)
-        {
-            // Construct 16 entry LUT for PSHUFB
-            uint8_t prod_lo[16], prod_hi[16];
-            for (ffe_t x = 0; x < 16; ++x)
-            {
-                const ffe_t prod = MultiplyLog(x << shift, static_cast<ffe_t>(log_m));
-                prod_lo[x] = static_cast<uint8_t>(prod);
-                prod_hi[x] = static_cast<uint8_t>(prod >> 8);
-            }
-
-            const LEO_M128 value_lo = _mm_loadu_si128((LEO_M128*)prod_lo);
-            const LEO_M128 value_hi = _mm_loadu_si128((LEO_M128*)prod_hi);
-
-            // Store in 128-bit wide table
-
-                _mm_storeu_si128((LEO_M128*)&Multiply128LUT[log_m].Lo[i], value_lo);
-                _mm_storeu_si128((LEO_M128*)&Multiply128LUT[log_m].Hi[i], value_hi);
-
-            // Store in 256-bit wide table
-
-                _mm256_storeu_si256((LEO_M256*)&Multiply256LUT[log_m].Lo[i],
-                    _mm256_broadcastsi128_si256(value_lo));
-                _mm256_storeu_si256((LEO_M256*)&Multiply256LUT[log_m].Hi[i],
-                    _mm256_broadcastsi128_si256(value_hi));
-        }
-    }
-}
-
-
+/*
 static void mul_mem(
     void * LEO_RESTRICT x, const void * LEO_RESTRICT y,
     ffe_t log_m, uint64_t bytes)

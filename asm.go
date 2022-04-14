@@ -1,5 +1,4 @@
 //go:build ignore
-// +build ignore
 
 //go:generate go run asm.go -out asm.s -pkg leopard
 

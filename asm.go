@@ -1,4 +1,6 @@
+//go:build ignore
 // +build ignore
+
 //go:generate go run asm.go -out asm.s -pkg leopard
 
 package main
@@ -10,7 +12,7 @@ import (
 )
 
 func main() {
-	Package("github.com/lazyledger/go-leopard")
+	Package("github.com/celestiaorg/go-leopard")
 
 	// Size of multiply256LUT_t: 2*4*32 bytes
 	const size_multiply256LUT_t = uint64(256)

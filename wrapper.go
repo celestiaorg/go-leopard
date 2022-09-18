@@ -168,7 +168,11 @@ func Decode(orig, recovery [][]byte) (decoded [][]byte, err error) {
 	}
 	for i := 0; i < len(recovery); i++ {
 		if recovery[i] != nil {
-			decoded[i+len(orig)] = recovery[i]
+			offset := 0 // special case: 1 share
+			if len(orig) > 1 {
+				offset = len(orig)
+			}
+			decoded[i+offset] = recovery[i]
 		}
 	}
 

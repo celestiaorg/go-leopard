@@ -101,50 +101,59 @@ func TestEncodeRecoverRoundtrip(t *testing.T) {
 	}
 }
 
-func TestEncodeDecodeRoundtrip(t *testing.T) {
-	const originalCount = 32768
-	const lossCount = 32768 // lose exactly originalCount of total data
-	const bufferBytes = 64
+func TestEncodeDecodeRoundtrips(t *testing.T) {
+	tcs := []struct {
+		name      string
+		origCount int
+		lossCount int
+		shareSize int
+	}{
+		{"one share, lose parity share", 1, 1, 64},
+		{"one share, lose none", 1, 0, 64},
+		{"two shares", 2, 1, 64},
+		{"32768 orig shares", 32768, 32768, 64}}
 
-	originalData := make([][]byte, originalCount)
-	for i := 0; i < originalCount; i++ {
-		originalData[i] = make([]byte, bufferBytes)
-		checkedRandBytes(originalData[i])
-	}
-	origCopy := make([][]byte, originalCount)
-	copy(origCopy, originalData)
-
-	encoded, err := Encode(originalData)
-	require.NoError(t, err)
-
-	origEnc := make([][]byte, len(encoded))
-	copy(origEnc, encoded)
-
-	// lose lossCount data (original or parity):
-	lostIdxs := map[int32]struct{}{}
-	for len(lostIdxs) < lossCount {
-		loseIdx := rand.Int31n(lossCount + originalCount)
-		if _, alreadyLost := lostIdxs[loseIdx]; !alreadyLost {
-			if loseIdx < originalCount {
-				originalData[loseIdx] = nil
-			} else {
-				encoded[loseIdx%originalCount] = nil
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			originalData := make([][]byte, tc.origCount)
+			for i := 0; i < tc.origCount; i++ {
+				originalData[i] = make([]byte, tc.shareSize)
+				checkedRandBytes(originalData[i])
 			}
-			lostIdxs[loseIdx] = struct{}{}
-		}
-	}
+			origCopy := deepCopy(originalData)
 
-	dec, err := Decode(originalData, encoded)
-	require.NoError(t, err)
+			encoded, err := Encode(originalData)
+			require.NoError(t, err)
 
-	// verify we recovered all lost data:
-	for i := 0; i < len(dec); i++ {
-		if i < originalCount {
-			assert.Equal(t, origCopy[i], dec[i])
-		}
-		if i >= originalCount {
-			assert.Equal(t, origEnc[i%originalCount], dec[i])
-		}
+			origEnc := deepCopy(encoded)
+
+			// lose lossCount data (original or parity):
+			lostIdxs := map[int32]struct{}{}
+			for len(lostIdxs) < tc.lossCount {
+				loseIdx := rand.Int31n(int32(tc.lossCount + tc.origCount))
+				if _, alreadyLost := lostIdxs[loseIdx]; !alreadyLost {
+					if loseIdx < int32(tc.origCount) {
+						originalData[loseIdx] = nil
+					} else {
+						encoded[loseIdx%int32(tc.origCount)] = nil
+					}
+					lostIdxs[loseIdx] = struct{}{}
+				}
+			}
+
+			dec, err := Decode(originalData, encoded)
+			require.NoError(t, err)
+
+			// verify we recovered all lost data:
+			for i := 0; i < len(dec); i++ {
+				if i < tc.origCount {
+					assert.Equal(t, origCopy[i], dec[i])
+				}
+				if i >= tc.origCount {
+					assert.Equal(t, origEnc[i%tc.origCount], dec[i])
+				}
+			}
+		})
 	}
 }
 
@@ -284,4 +293,13 @@ func checkBytes(p []byte) bool {
 	readChksm := p[len(p)-md5.Size:]
 	chksm := md5.Sum(data)
 	return bytes.Equal(readChksm, chksm[:])
+}
+
+func deepCopy(original [][]byte) [][]byte {
+	dest := make([][]byte, len(original))
+	for i, cell := range original {
+		dest[i] = make([]byte, len(cell))
+		copy(dest[i], cell)
+	}
+	return dest
 }

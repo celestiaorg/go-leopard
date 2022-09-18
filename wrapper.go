@@ -59,7 +59,7 @@ func Init() error {
 	return leopardResultToErr(Leopardresult(LeoInit(version)))
 }
 
-// Encode takes an slice of equally sized byte slices and computes len(data) parity shares.
+// Encode takes a slice of equally sized byte slices and computes len(data) parity shares.
 // This means you can lose half of (data || encodeWork) and still recover the data.
 func Encode(data [][]byte) (encodeWork [][]byte, err error) {
 	origCount, bufferBytes, err := extractCounts(data)

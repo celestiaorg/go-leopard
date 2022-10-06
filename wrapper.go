@@ -168,7 +168,12 @@ func Decode(orig, recovery [][]byte) (decoded [][]byte, err error) {
 	}
 	for i := 0; i < len(recovery); i++ {
 		if recovery[i] != nil {
-			offset := 0 // special case: 1 share
+			offset := 0
+			// Special case: 1 share. In this case, Recover returns only one share; due to
+			// - https://github.com/catid/leopard/blob/22ddc7804998d31c8f1a2617ee720e063b1fa6cd/leopard.cpp#L207-L208 and
+			// - https://github.com/catid/leopard/blob/22ddc7804998d31c8f1a2617ee720e063b1fa6cd/leopard.cpp#L278-L283
+			// For all other cases Recover returns 2*len(orig) that len(orig) is a power of 2 (hence the offset applies
+			// below).
 			if len(orig) > 1 {
 				offset = len(orig)
 			}
